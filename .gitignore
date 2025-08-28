@@ -1,0 +1,430 @@
+# .gitignore for FBR E-Invoicing Desktop Application
+# ================================================
+
+# Python
+# ------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# -----------
+# Usually these files are written by a python script from a template
+# before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+dist/
+build/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+#   For a library or package, you might want to ignore these files since the code is
+#   intended to run in multiple environments; otherwise, check them in:
+# .python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# poetry
+#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
+#   This is especially recommended for binary packages to ensure reproducibility, and is more
+#   commonly ignored for libraries.
+#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+#poetry.lock
+
+# pdm
+#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
+#pdm.lock
+#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
+#   in version control.
+#   https://pdm.fming.dev/#use-with-ide
+.pdm.toml
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# FBR E-Invoicing Specific Files
+# ==============================
+
+# Application logs
+logs/
+*.log
+fbr_invoicing.log
+error.log
+debug.log
+
+# Database files (if using local SQLite for testing)
+*.db
+*.sqlite
+*.sqlite3
+
+# Configuration files with sensitive data
+config/app_config.ini
+config/production_config.ini
+config/local_config.ini
+.env.local
+.env.production
+
+# Backup files
+backup/
+backups/
+*.bak
+*.backup
+fbr_backup_*.sql
+
+# FBR API credentials and sensitive data
+fbr_credentials.json
+api_keys.txt
+.secrets
+
+# PyQt6 UI files (if using Qt Designer)
+*.ui~
+
+# Application data
+data/
+exports/
+temp/
+tmp/
+
+# User-specific invoice data
+invoices/
+invoice_exports/
+customer_data/
+
+# Development and testing files
+test_data/
+sample_invoices/
+dev_config/
+
+# IDE and Editor Files
+# ===================
+
+# Visual Studio Code
+.vscode/
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Atom
+.atom/
+
+# Windows specific files
+# ======================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS specific files
+# ===================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Linux specific files
+# ===================
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Application Build & Distribution
+# ================================
+
+# PyInstaller output
+dist/
+build/
+*.exe
+*.msi
+installer/
+setup/
+
+# Inno Setup
+installer_output/
+setup_output/
+
+# NSIS
+nsis_output/
+
+# Application packages
+*.zip
+*.tar.gz
+*.7z
+releases/
+
+# Documentation build
+docs/build/
+docs/_build/
+
+# Temporary installation files
+install_temp/
+setup_temp/
+
+# Development Tools
+# ================
+
+# Node.js (if using any JS tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Version control
+*.orig
+*.rej
+
+# Patch files
+*.patch
+*.diff
+
+# Profiling data
+*.prof
+
+# Memory dumps
+*.dmp
+
+# Core dumps
+core
+core.*
+
+# Application-specific temporary files
+# ===================================
+
+# FBR queue processing
+queue_processing.lock
+processing.tmp
+
+# Export files
+export_*.csv
+export_*.xlsx
+export_*.pdf
+
+# Cache files
+cache/
+.cache/
+*.cache
+
+# Session files
+sessions/
+.sessions/
+
+# Lock files
+*.lock
+.lock
+
+# PID files
+*.pid
+
+# Application state
+app_state.json
+last_session.json
+
+# Performance logs
+performance.log
+benchmark_*.txt
+
+# Debug files
+debug/
+debug_*.txt
+trace_*.log
+
+# Custom ignore patterns
+# ======================
+
+# Add your custom patterns here
+# my_custom_file.txt
+# temp_data/
+
+# Keep important files (use ! to negate ignore)
+# ============================================
+
+# Keep example config files
+!config/example_config.ini
+!config/sample_config.ini
+
+# Keep documentation
+!docs/
+!*.md
+!*.rst
+
+# Keep license and setup files
+!LICENSE
+!license.txt
+!setup.py
+!requirements.txt
+!pyproject.toml
+
+# Keep resource files
+!resources/
+!assets/
+
+# Keep important scripts
+!setup.bat
+!run_app.bat
+!build.py
+
+# Keep database migration scripts
+!migrations/
+!sql/
+
+# Keep test configuration
+!tests/conftest.py
+!pytest.ini
