@@ -10,7 +10,7 @@ def build_executable():
         '--name=FBR_Invoicing',  # Executable name
         '--onefile',             # Single executable file
         '--windowed',            # Hide console window
-        '--icon=resources/icons/app_icon.ico',  # Application icon
+        # '--icon=resources/icons/app_icon.ico',  # Application icon (commented out due to format issue)
         
         # Include additional files
         '--add-data=resources;resources',

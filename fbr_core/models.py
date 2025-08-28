@@ -1,27 +1,35 @@
 # fbr_core/models.py
-from sqlalchemy import Column, Integer, String, DateTime, Text, Float, Boolean, create_engine
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    Text,
+    Float,
+    Boolean,
+    create_engine,
+)
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
-import json
-import uuid
 
 Base = declarative_base()
 
+
 class Company(Base):
-    __tablename__ = 'companies'
-    
+    __tablename__ = "companies"
+
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     tax_id = Column(String(100))
     province = Column(String(100))
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class Customer(Base):
-    __tablename__ = 'customers'
-    
+    __tablename__ = "customers"
+
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
     tax_id = Column(String(100))
@@ -29,9 +37,10 @@ class Customer(Base):
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class Item(Base):
-    __tablename__ = 'items'
-    
+    __tablename__ = "items"
+
     id = Column(Integer, primary_key=True)
     code = Column(String(100), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
@@ -40,9 +49,10 @@ class Item(Base):
     rate = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
 class SalesInvoice(Base):
-    __tablename__ = 'sales_invoices'
-    
+    __tablename__ = "sales_invoices"
+
     id = Column(Integer, primary_key=True)
     invoice_number = Column(String(100), unique=True, nullable=False)
     customer_id = Column(Integer)
@@ -52,7 +62,7 @@ class SalesInvoice(Base):
     total_amount = Column(Float)
     tax_amount = Column(Float)
     grand_total = Column(Float)
-    
+
     # FBR specific fields
     fbr_invoice_number = Column(String(255))
     fbr_status = Column(String(50))  # Valid, Invalid, Error
@@ -60,13 +70,14 @@ class SalesInvoice(Base):
     fbr_datetime = Column(DateTime)
     submit_to_fbr = Column(Boolean, default=True)
     province = Column(String(100))
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
 class SalesInvoiceItem(Base):
-    __tablename__ = 'sales_invoice_items'
-    
+    __tablename__ = "sales_invoice_items"
+
     id = Column(Integer, primary_key=True)
     invoice_id = Column(Integer)
     item_id = Column(Integer)
@@ -78,9 +89,10 @@ class SalesInvoiceItem(Base):
     hs_code = Column(String(50))
     description = Column(Text)
 
+
 class FBRQueue(Base):
-    __tablename__ = 'fbr_queue'
-    
+    __tablename__ = "fbr_queue"
+
     id = Column(Integer, primary_key=True)
     document_type = Column(String(50))  # Sales Invoice, POS Invoice
     document_id = Column(Integer)
@@ -94,9 +106,10 @@ class FBRQueue(Base):
     last_retry_at = Column(DateTime)
     completed_at = Column(DateTime)
 
+
 class FBRLogs(Base):
-    __tablename__ = 'fbr_logs'
-    
+    __tablename__ = "fbr_logs"
+
     id = Column(Integer, primary_key=True)
     document_type = Column(String(50))
     document_id = Column(Integer)
@@ -109,15 +122,17 @@ class FBRLogs(Base):
     response_status_code = Column(String(10))
     validation_errors = Column(Text)
 
+
 class FBRSettings(Base):
-    __tablename__ = 'fbr_settings'
-    
+    __tablename__ = "fbr_settings"
+
     id = Column(Integer, primary_key=True)
     api_endpoint = Column(String(500))
     pral_authorization_token = Column(String(500))
     pral_login_id = Column(String(100))
     pral_login_password = Column(String(100))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 # Database connection
 class DatabaseManager:
@@ -126,21 +141,26 @@ class DatabaseManager:
         self.engine = create_engine(
             connection_string,
             pool_pre_ping=True,  # Verify connections before use
-            pool_recycle=3600,   # Recycle connections after 1 hour
-            echo=False           # Set to True for SQL debugging
+            pool_recycle=3600,  # Recycle connections after 1 hour
+            echo=False,  # Set to True for SQL debugging
         )
         Base.metadata.create_all(self.engine)
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
-    
+
     def get_session(self):
         return self.session
-    
+
     def close(self):
         self.session.close()
+
 
 # Example usage
 def get_database_manager():
     # Neon PostgreSQL connection
-    connection_string = "postgresql://neondb_owner:npg_H2hByXAgPz8n@ep-sparkling-shape-adwmth20-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    connection_string = (
+        "postgresql://neondb_owner:npg_H2hByXAgPz8n@ep-sparkling-shape-"
+        "adwmth20-pooler.c-2.us-east-1.aws.neon.tech/neondb?"
+        "sslmode=require&channel_binding=require"
+    )
     return DatabaseManager(connection_string)
