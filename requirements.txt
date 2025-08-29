@@ -11,6 +11,11 @@ PyMySQL      # MySQL driver
 cryptography
 requests
 
+# --- Excel Processing ---
+pandas
+openpyxl
+xlrd
+
 # --- Utilities ---
 python-dateutil
 configparser

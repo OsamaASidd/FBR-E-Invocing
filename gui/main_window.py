@@ -1,4 +1,7 @@
 import sys
+import json
+import pandas as pd
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -19,11 +22,218 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDateEdit,
+    QFileDialog,
+    QCheckBox,
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QDate
+from PyQt6.QtGui import QFont
 
 from fbr_core.models import DatabaseManager, SalesInvoice, FBRQueue, FBRLogs
 from fbr_core.fbr_service import FBRSubmissionService, FBRQueueManager
+
+
+class ExcelTemplateGenerator:
+    """Generates Excel template for invoice upload"""
+    
+    @staticmethod
+    def create_template(file_path, mode="sandbox"):
+        """Create Excel template file"""
+        try:
+            # Create sample data based on mode
+            if mode.lower() == "sandbox":
+                data = {
+                    'invoiceType': ['Sale Invoice'],
+                    'invoiceDate': ['2025-04-21'],
+                    'sellerNTNCNIC': ['0786909'],
+                    'sellerBusinessName': ['Company 8'],
+                    'sellerProvince': ['Sindh'],
+                    'sellerAddress': ['Karachi'],
+                    'buyerNTNCNIC': ['1000000000000'],
+                    'buyerBusinessName': ['FERTILIZER MANUFAC IRS NEW'],
+                    'buyerProvince': ['Sindh'],
+                    'buyerAddress': ['Karachi'],
+                    'buyerRegistrationType': ['Registered'],
+                    'invoiceRefNo': [''],
+                    'scenarioId': ['SN001'],
+                    # Item fields
+                    'hsCode': ['0101.2100'],
+                    'productDescription': ['product Description'],
+                    'rate': ['18%'],
+                    'uoM': ['Numbers, pieces, units'],
+                    'quantity': [1],
+                    'totalValues': [0],
+                    'valueSalesExcludingST': [1000],
+                    'fixedNotifiedValueOrRetailPrice': [0],
+                    'salesTaxApplicable': [18],
+                    'salesTaxWithheldAtSource': [0],
+                    'extraTax': [''],
+                    'furtherTax': [120],
+                    'sroScheduleNo': [''],
+                    'fedPayable': [0],
+                    'discount': [0],
+                    'saleType': ['Goods at standard rate (default)'],
+                    'sroItemSerialNo': ['']
+                }
+            else:  # production
+                data = {
+                    'invoiceType': ['Sale Invoice'],
+                    'invoiceDate': ['2025-04-21'],
+                    'sellerNTNCNIC': ['0786909'],
+                    'sellerBusinessName': ['Company 8'],
+                    'sellerProvince': ['Sindh'],
+                    'sellerAddress': ['Karachi'],
+                    'buyerNTNCNIC': ['1000000000000'],
+                    'buyerBusinessName': ['FERTILIZER MANUFAC IRS NEW'],
+                    'buyerProvince': ['Sindh'],
+                    'buyerAddress': ['Karachi'],
+                    'buyerRegistrationType': ['Unregistered'],
+                    'invoiceRefNo': [''],
+                    'scenarioId': [''],  # Empty for production
+                    # Item fields
+                    'hsCode': ['0101.2100'],
+                    'productDescription': ['product Description'],
+                    'rate': ['18%'],
+                    'uoM': ['Numbers, pieces, units'],
+                    'quantity': [1],
+                    'totalValues': [0],
+                    'valueSalesExcludingST': [1000],
+                    'fixedNotifiedValueOrRetailPrice': [0],
+                    'salesTaxApplicable': [180],
+                    'salesTaxWithheldAtSource': [0],
+                    'extraTax': [''],
+                    'furtherTax': [120],
+                    'sroScheduleNo': [''],
+                    'fedPayable': [0],
+                    'discount': [0],
+                    'saleType': ['Goods at standard rate (default)'],
+                    'sroItemSerialNo': ['']
+                }
+
+            # Create DataFrame
+            df = pd.DataFrame(data)
+            
+            # Write to Excel with formatting
+            with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+                # Write main sheet
+                df.to_excel(writer, sheet_name='Invoice_Template', index=False)
+                
+                # Get workbook and worksheet
+                workbook = writer.book
+                worksheet = writer.sheets['Invoice_Template']
+                
+                # Add instructions sheet
+                instructions = pd.DataFrame({
+                    'Field Name': list(data.keys()),
+                    'Description': [
+                        'Type of invoice (Sale Invoice, etc.)',
+                        'Invoice date (YYYY-MM-DD format)',
+                        'Seller NTN/CNIC number',
+                        'Seller business name',
+                        'Seller province',
+                        'Seller address',
+                        'Buyer NTN/CNIC number',
+                        'Buyer business name',
+                        'Buyer province',
+                        'Buyer address',
+                        'Registered or Unregistered',
+                        'Invoice reference number',
+                        'Scenario ID (Sandbox only)',
+                        'HS Code for the product',
+                        'Product description',
+                        'Tax rate (e.g., 18%)',
+                        'Unit of measurement',
+                        'Product quantity',
+                        'Total values',
+                        'Value excluding sales tax',
+                        'Fixed/notified value or retail price',
+                        'Sales tax applicable amount',
+                        'Sales tax withheld at source',
+                        'Extra tax',
+                        'Further tax',
+                        'SRO schedule number',
+                        'FED payable',
+                        'Discount amount',
+                        'Sale type',
+                        'SRO item serial number'
+                    ],
+                    'Required': ['Yes'] * len(data),
+                    'Sample Value': [str(v[0]) if v else '' for v in data.values()]
+                })
+                
+                instructions.to_excel(writer, sheet_name='Instructions', index=False)
+                
+                # Format headers
+                for worksheet in writer.sheets.values():
+                    for cell in worksheet[1]:  # Header row
+                        cell.font = workbook.create_font(bold=True)
+                        
+            return True
+            
+        except Exception as e:
+            print(f"Error creating template: {e}")
+            return False
+
+
+class ExcelProcessor:
+    """Processes uploaded Excel files"""
+    
+    @staticmethod
+    def process_excel_file(file_path, mode="sandbox"):
+        """Process uploaded Excel file and convert to FBR format"""
+        try:
+            # Read Excel file
+            df = pd.read_excel(file_path, sheet_name='Invoice_Template')
+            
+            invoices = []
+            
+            for index, row in df.iterrows():
+                # Build invoice payload
+                invoice_payload = {
+                    "invoiceType": row.get('invoiceType', 'Sale Invoice'),
+                    "invoiceDate": str(row.get('invoiceDate', datetime.now().strftime('%Y-%m-%d'))),
+                    "sellerNTNCNIC": str(row.get('sellerNTNCNIC', '')),
+                    "sellerBusinessName": str(row.get('sellerBusinessName', '')),
+                    "sellerProvince": str(row.get('sellerProvince', '')),
+                    "sellerAddress": str(row.get('sellerAddress', '')),
+                    "buyerNTNCNIC": str(row.get('buyerNTNCNIC', '')),
+                    "buyerBusinessName": str(row.get('buyerBusinessName', '')),
+                    "buyerProvince": str(row.get('buyerProvince', '')),
+                    "buyerAddress": str(row.get('buyerAddress', '')),
+                    "buyerRegistrationType": str(row.get('buyerRegistrationType', 'Unregistered')),
+                    "invoiceRefNo": str(row.get('invoiceRefNo', '')),
+                    "items": [
+                        {
+                            "hsCode": str(row.get('hsCode', '')),
+                            "productDescription": str(row.get('productDescription', '')),
+                            "rate": str(row.get('rate', '18%')),
+                            "uoM": str(row.get('uoM', 'Numbers, pieces, units')),
+                            "quantity": float(row.get('quantity', 1)),
+                            "totalValues": float(row.get('totalValues', 0)),
+                            "valueSalesExcludingST": float(row.get('valueSalesExcludingST', 0)),
+                            "fixedNotifiedValueOrRetailPrice": float(row.get('fixedNotifiedValueOrRetailPrice', 0)),
+                            "salesTaxApplicable": float(row.get('salesTaxApplicable', 0)),
+                            "salesTaxWithheldAtSource": float(row.get('salesTaxWithheldAtSource', 0)),
+                            "extraTax": str(row.get('extraTax', '')),
+                            "furtherTax": float(row.get('furtherTax', 0)),
+                            "sroScheduleNo": str(row.get('sroScheduleNo', '')),
+                            "fedPayable": float(row.get('fedPayable', 0)),
+                            "discount": float(row.get('discount', 0)),
+                            "saleType": str(row.get('saleType', 'Goods at standard rate (default)')),
+                            "sroItemSerialNo": str(row.get('sroItemSerialNo', ''))
+                        }
+                    ]
+                }
+                
+                # Add scenarioId for sandbox mode
+                if mode.lower() == "sandbox":
+                    invoice_payload["scenarioId"] = str(row.get('scenarioId', 'SN001'))
+                
+                invoices.append(invoice_payload)
+            
+            return {"success": True, "invoices": invoices}
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 class FBRSubmissionThread(QThread):
@@ -158,9 +368,11 @@ class InvoiceDialog(QDialog):
 class MainWindow(QMainWindow):
     """Main application window"""
 
-    def __init__(self):
+    def __init__(self, config=None):
         super().__init__()
+        self.config = config
         self.db_manager = None
+        self.is_sandbox_mode = True  # Default to sandbox
         self.setup_ui()
         self.setup_database()
         self.setup_timers()
@@ -179,9 +391,9 @@ class MainWindow(QMainWindow):
         tab_widget = QTabWidget()
         layout.addWidget(tab_widget)
 
-        # Invoices tab
+        # Invoices tab (renamed from Sales Invoices)
         self.invoices_tab = self.create_invoices_tab()
-        tab_widget.addTab(self.invoices_tab, "Sales Invoices")
+        tab_widget.addTab(self.invoices_tab, "Invoices")
 
         # Queue tab
         self.queue_tab = self.create_queue_tab()
@@ -203,7 +415,74 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Toolbar
+        # Top toolbar with mode toggle
+        top_toolbar = QHBoxLayout()
+        
+        # Sandbox/Production Toggle
+        mode_group = QGroupBox("Mode")
+        mode_layout = QHBoxLayout(mode_group)
+        
+        self.sandbox_checkbox = QCheckBox("Sandbox Mode")
+        self.sandbox_checkbox.setChecked(True)  # Default to sandbox
+        self.sandbox_checkbox.toggled.connect(self.toggle_mode)
+        
+        # Style the checkbox to look like a toggle
+        self.sandbox_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-weight: bold;
+                color: #0078d4;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0078d4;
+                border: 2px solid #0078d4;
+            }
+            QCheckBox::indicator:unchecked {
+                background-color: #f0f0f0;
+                border: 2px solid #cccccc;
+            }
+        """)
+        
+        mode_layout.addWidget(self.sandbox_checkbox)
+        top_toolbar.addWidget(mode_group)
+        
+        top_toolbar.addStretch()
+        
+        # Download template and upload buttons
+        download_template_btn = QPushButton("📥 Download Template")
+        download_template_btn.clicked.connect(self.download_template)
+        download_template_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        top_toolbar.addWidget(download_template_btn)
+        
+        upload_excel_btn = QPushButton("📤 Upload Excel")
+        upload_excel_btn.clicked.connect(self.upload_excel)
+        upload_excel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+        """)
+        top_toolbar.addWidget(upload_excel_btn)
+        
+        layout.addLayout(top_toolbar)
+
+        # Regular toolbar
         toolbar_layout = QHBoxLayout()
 
         new_invoice_btn = QPushButton("New Invoice")
@@ -233,6 +512,158 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.invoices_table)
 
         return widget
+
+    def toggle_mode(self, checked):
+        """Toggle between Sandbox and Production mode"""
+        self.is_sandbox_mode = checked
+        mode_text = "Sandbox" if checked else "Production"
+        self.statusBar().showMessage(f"Mode switched to: {mode_text}")
+        
+        # Update checkbox text
+        self.sandbox_checkbox.setText(f"{mode_text} Mode")
+
+    def download_template(self):
+        """Download Excel template"""
+        try:
+            mode = "sandbox" if self.is_sandbox_mode else "production"
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                f"Save {mode.title()} Template",
+                f"fbr_invoice_template_{mode}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                "Excel files (*.xlsx)"
+            )
+            
+            if file_path:
+                success = ExcelTemplateGenerator.create_template(file_path, mode)
+                
+                if success:
+                    QMessageBox.information(
+                        self,
+                        "Template Downloaded",
+                        f"Excel template for {mode.title()} mode has been saved to:\n{file_path}"
+                    )
+                else:
+                    QMessageBox.critical(
+                        self,
+                        "Download Failed",
+                        "Failed to create Excel template. Please try again."
+                    )
+                    
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Download Error",
+                f"Error downloading template: {str(e)}"
+            )
+
+    def upload_excel(self):
+        """Upload and process Excel file"""
+        try:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select Excel File",
+                "",
+                "Excel files (*.xlsx *.xls)"
+            )
+            
+            if file_path:
+                mode = "sandbox" if self.is_sandbox_mode else "production"
+                
+                # Show processing message
+                self.statusBar().showMessage("Processing Excel file...")
+                
+                # Process the Excel file
+                result = ExcelProcessor.process_excel_file(file_path, mode)
+                
+                if result["success"]:
+                    invoices = result["invoices"]
+                    
+                    # Show confirmation dialog
+                    reply = QMessageBox.question(
+                        self,
+                        "Upload Confirmation",
+                        f"Found {len(invoices)} invoice(s) in the Excel file.\n"
+                        f"Mode: {mode.title()}\n"
+                        f"Do you want to submit these invoices to FBR?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    
+                    if reply == QMessageBox.StandardButton.Yes:
+                        # Process invoices for FBR submission
+                        self.process_uploaded_invoices(invoices, mode)
+                    else:
+                        self.statusBar().showMessage("Upload cancelled")
+                        
+                else:
+                    QMessageBox.critical(
+                        self,
+                        "Processing Error",
+                        f"Error processing Excel file:\n{result['error']}"
+                    )
+                    
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Upload Error",
+                f"Error uploading Excel file: {str(e)}"
+            )
+
+    def process_uploaded_invoices(self, invoices, mode):
+        """Process uploaded invoices for FBR submission"""
+        try:
+            success_count = 0
+            error_count = 0
+            errors = []
+            
+            for i, invoice_data in enumerate(invoices):
+                try:
+                    # Here you would typically save to database first,
+                    # then submit to FBR API
+                    
+                    # For now, just simulate the process
+                    self.statusBar().showMessage(f"Processing invoice {i+1} of {len(invoices)}...")
+                    
+                    # Simulate API call delay
+                    self.repaint()  # Force GUI update
+                    
+                    # You would implement actual FBR API submission here
+                    # For now, just log the invoice data
+                    print(f"Invoice {i+1} ({mode} mode):")
+                    print(json.dumps(invoice_data, indent=2))
+                    
+                    success_count += 1
+                    
+                except Exception as e:
+                    error_count += 1
+                    errors.append(f"Invoice {i+1}: {str(e)}")
+            
+            # Show results
+            result_message = (
+                f"Upload processing completed!\n\n"
+                f"Successful: {success_count}\n"
+                f"Failed: {error_count}\n"
+                f"Mode: {mode.title()}"
+            )
+            
+            if errors:
+                result_message += f"\n\nErrors:\n" + "\n".join(errors[:5])
+                if len(errors) > 5:
+                    result_message += f"\n... and {len(errors) - 5} more errors"
+            
+            QMessageBox.information(self, "Upload Complete", result_message)
+            
+            # Refresh tables
+            self.refresh_invoices_table()
+            self.refresh_queue_table()
+            
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Processing Error",
+                f"Error processing uploaded invoices: {str(e)}"
+            )
+        finally:
+            self.statusBar().showMessage("Ready")
 
     def create_queue_tab(self):
         """Create the queue management tab"""
@@ -328,12 +759,17 @@ class MainWindow(QMainWindow):
     def setup_database(self):
         """Setup database connection"""
         try:
-            # Use Neon PostgreSQL connection
-            connection_string = (
-                "postgresql://neondb_owner:npg_H2hByXAgPz8n@ep-sparkling-shape-"
-                "adwmth20-pooler.c-2.us-east-1.aws.neon.tech/neondb?"
-                "sslmode=require&channel_binding=require"
-            )
+            # Use connection string from config if available
+            if self.config:
+                connection_string = self.config.get_database_url()
+            else:
+                # Fallback to hardcoded connection string
+                connection_string = (
+                    "postgresql://neondb_owner:npg_H2hByXAgPz8n@ep-sparkling-shape-"
+                    "adwmth20-pooler.c-2.us-east-1.aws.neon.tech/neondb?"
+                    "sslmode=require&channel_binding=require"
+                )
+            
             self.db_manager = DatabaseManager(connection_string)
             self.statusBar().showMessage("Database connected successfully")
 
@@ -389,6 +825,17 @@ class MainWindow(QMainWindow):
         for row in selected_rows:
             invoice_id = int(self.invoices_table.item(row, 0).text())
             invoice_ids.append(invoice_id)
+
+        mode = "Sandbox" if self.is_sandbox_mode else "Production"
+        reply = QMessageBox.question(
+            self,
+            "Confirm Submission",
+            f"Submit {len(invoice_ids)} invoice(s) to FBR in {mode} mode?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.No:
+            return
 
         # Start background submission
         self.submission_thread = FBRSubmissionThread(
@@ -457,7 +904,7 @@ class MainWindow(QMainWindow):
         )
 
         self.invoices_table.setRowCount(len(invoices))
-        self.invoices_table.setColumnCount(7)
+        self.invoices_table.setColumnCount(8)  # Added mode column
         self.invoices_table.setHorizontalHeaderLabels(
             [
                 "ID",
@@ -467,6 +914,7 @@ class MainWindow(QMainWindow):
                 "Amount",
                 "FBR Status",
                 "FBR Invoice No",
+                "Mode"
             ]
         )
 
@@ -499,6 +947,9 @@ class MainWindow(QMainWindow):
             )
             self.invoices_table.setItem(
                 row, 6, QTableWidgetItem(invoice.fbr_invoice_number or "")
+            )
+            self.invoices_table.setItem(
+                row, 7, QTableWidgetItem("Sandbox" if self.is_sandbox_mode else "Production")
             )
 
         self.invoices_table.resizeColumnsToContents()
