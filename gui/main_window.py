@@ -731,16 +731,25 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # FBR API Settings
+        # FBR API Settings Group
         api_group = QGroupBox("FBR API Settings")
+        api_group.setMinimumHeight(300)  # Ensure minimum height
         api_layout = QFormLayout(api_group)
 
         self.api_endpoint_edit = QLineEdit()
+        self.api_endpoint_edit.setPlaceholderText("https://api.fbr.gov.pk/einvoicing")
+        
         self.auth_token_edit = QLineEdit()
+        self.auth_token_edit.setPlaceholderText("Enter your authorization token")
+        
         self.login_id_edit = QLineEdit()
+        self.login_id_edit.setPlaceholderText("Enter your login ID")
+        
         self.login_password_edit = QLineEdit()
         self.login_password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.login_password_edit.setPlaceholderText("Enter your password")
 
+        # Add rows with proper spacing
         api_layout.addRow("API Endpoint:", self.api_endpoint_edit)
         api_layout.addRow("Authorization Token:", self.auth_token_edit)
         api_layout.addRow("Login ID:", self.login_id_edit)
@@ -748,16 +757,86 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(api_group)
 
-        # Save settings button
+        # Database Settings Group
+        db_group = QGroupBox("Database Settings")
+        db_layout = QFormLayout(db_group)
+        
+        self.connection_status_label = QLabel("Not Connected")
+        self.connection_status_label.setStyleSheet("color: red;")
+        
+        test_connection_btn = QPushButton("Test Connection")
+        test_connection_btn.clicked.connect(self.test_database_connection)
+        
+        db_layout.addRow("Connection Status:", self.connection_status_label)
+        db_layout.addRow("", test_connection_btn)
+        
+        layout.addWidget(db_group)
+
+        # Button layout
+        button_layout = QHBoxLayout()
+        
+        load_settings_btn = QPushButton("Load Settings")
+        load_settings_btn.clicked.connect(self.load_settings)
+        button_layout.addWidget(load_settings_btn)
+        
         save_settings_btn = QPushButton("Save Settings")
         save_settings_btn.clicked.connect(self.save_settings)
-        layout.addWidget(save_settings_btn)
-
+        save_settings_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                font-weight: bold;
+                padding: 10px 20px;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        button_layout.addWidget(save_settings_btn)
+        
+        layout.addLayout(button_layout)
         layout.addStretch()
+        
         return widget
 
+    def load_settings(self):
+        """Load settings from database"""
+        if not self.db_manager:
+            QMessageBox.warning(self, "Warning", "Database not connected")
+            return
+            
+        try:
+            session = self.db_manager.get_session()
+            from fbr_core.models import FBRSettings
+            
+            settings = session.query(FBRSettings).first()
+            
+            if settings:
+                self.api_endpoint_edit.setText(settings.api_endpoint or "")
+                self.auth_token_edit.setText(settings.pral_authorization_token or "")
+                self.login_id_edit.setText(settings.pral_login_id or "")
+                self.login_password_edit.setText(settings.pral_login_password or "")
+                
+                self.statusBar().showMessage("Settings loaded successfully")
+            else:
+                # Create default settings
+                default_settings = FBRSettings(
+                    api_endpoint="https://api.fbr.gov.pk/einvoicing",
+                    pral_authorization_token="",
+                    pral_login_id="",
+                    pral_login_password=""
+                )
+                session.add(default_settings)
+                session.commit()
+                
+                self.statusBar().showMessage("Default settings created")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load settings: {str(e)}")
+
+
     def setup_database(self):
-        """Setup database connection"""
+        """Setup database connection - UPDATED VERSION"""
         try:
             # Use connection string from config if available
             if self.config:
@@ -770,6 +849,7 @@ class MainWindow(QMainWindow):
                     "sslmode=require&channel_binding=require"
                 )
             
+            from fbr_core.models import DatabaseManager
             self.db_manager = DatabaseManager(connection_string)
             self.statusBar().showMessage("Database connected successfully")
 
@@ -777,11 +857,22 @@ class MainWindow(QMainWindow):
             self.refresh_invoices_table()
             self.refresh_queue_table()
             self.refresh_logs_table()
+            
+            # Load settings automatically
+            self.load_settings()
+            
+            # Update connection status if on settings tab
+            if hasattr(self, 'connection_status_label'):
+                self.connection_status_label.setText("Connected ✓")
+                self.connection_status_label.setStyleSheet("color: green; font-weight: bold;")
 
         except Exception as e:
             QMessageBox.critical(
                 self, "Database Error", f"Failed to connect to database: {str(e)}"
             )
+            if hasattr(self, 'connection_status_label'):
+                self.connection_status_label.setText("Connection Failed ✗")
+                self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
 
     def setup_timers(self):
         """Setup auto-refresh timers"""
@@ -1049,10 +1140,58 @@ class MainWindow(QMainWindow):
 
         self.logs_table.resizeColumnsToContents()
 
+    def test_database_connection(self):
+        """Test database connection"""
+        try:
+            if self.db_manager:
+                session = self.db_manager.get_session()
+                session.execute("SELECT 1")
+                
+                self.connection_status_label.setText("Connected ✓")
+                self.connection_status_label.setStyleSheet("color: green; font-weight: bold;")
+                QMessageBox.information(self, "Success", "Database connection successful!")
+            else:
+                self.connection_status_label.setText("Not Connected ✗")
+                self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
+                QMessageBox.warning(self, "Warning", "Database manager not initialized")
+                
+        except Exception as e:
+            self.connection_status_label.setText("Connection Failed ✗")
+            self.connection_status_label.setStyleSheet("color: red; font-weight: bold;")
+            QMessageBox.critical(self, "Error", f"Database connection failed: {str(e)}")
+
+
+
     def save_settings(self):
-        """Save FBR settings"""
-        # Implementation for saving settings
-        QMessageBox.information(self, "Settings", "Settings saved successfully")
+        """Save FBR settings to database"""
+        if not self.db_manager:
+            QMessageBox.warning(self, "Warning", "Database not connected")
+            return
+            
+        try:
+            session = self.db_manager.get_session()
+            from fbr_core.models import FBRSettings
+            
+            settings = session.query(FBRSettings).first()
+            
+            if not settings:
+                settings = FBRSettings()
+                session.add(settings)
+            
+            # Update settings
+            settings.api_endpoint = self.api_endpoint_edit.text().strip()
+            settings.pral_authorization_token = self.auth_token_edit.text().strip()
+            settings.pral_login_id = self.login_id_edit.text().strip()
+            settings.pral_login_password = self.login_password_edit.text().strip()
+            settings.updated_at = datetime.now()
+            
+            session.commit()
+            
+            QMessageBox.information(self, "Success", "Settings saved successfully!")
+            self.statusBar().showMessage("Settings saved")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save settings: {str(e)}")
 
     def retry_failed_items(self):
         """Retry failed queue items"""
