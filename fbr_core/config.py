@@ -42,12 +42,12 @@ class AppConfig:
         }
 
         self.config["FBR_API"] = {
-            "endpoint": "https://api.fbr.gov.pk/einvoicing",
-            "authorization_token": "",
+            "endpoint": "https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb",
+            "authorization_token": "e8882e63-ca03-3174-8e19-f9e609f2a418",
             "login_id": "",
             "login_password": "",
             "timeout": "30",
-            "max_retries": "3",
+            "max_retries": "4",
         }
 
         self.config["APPLICATION"] = {

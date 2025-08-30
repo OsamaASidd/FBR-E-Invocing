@@ -1,3 +1,5 @@
+# Updated main_window.py file integrating with the new FBRInvoiceDialog
+
 import sys
 import json
 import pandas as pd
@@ -28,6 +30,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QThread, pyqtSignal, QTimer, QDate
 from PyQt6.QtGui import QFont
 
+# Import the new FBR Invoice Dialog
+from gui.dialogs.invoice_dialog import FBRInvoiceDialog
 from fbr_core.models import DatabaseManager, SalesInvoice, FBRQueue, FBRLogs
 from fbr_core.fbr_service import FBRSubmissionService, FBRQueueManager
 
@@ -270,101 +274,6 @@ class FBRSubmissionThread(QThread):
         self.submission_completed.emit(results)
 
 
-class InvoiceDialog(QDialog):
-    """Dialog for creating/editing invoices"""
-
-    def __init__(self, db_manager, parent=None, invoice_id=None):
-        super().__init__(parent)
-        self.db_manager = db_manager
-        self.invoice_id = invoice_id
-        self.setWindowTitle("Invoice Details")
-        self.setModal(True)
-        self.resize(600, 500)
-        self.setup_ui()
-
-        if invoice_id:
-            self.load_invoice_data()
-
-    def setup_ui(self):
-        layout = QVBoxLayout(self)
-
-        # Form layout for invoice details
-        form_group = QGroupBox("Invoice Information")
-        form_layout = QFormLayout(form_group)
-
-        self.invoice_number_edit = QLineEdit()
-        self.customer_combo = QComboBox()
-        self.company_combo = QComboBox()
-        self.posting_date_edit = QDateEdit(QDate.currentDate())
-        self.due_date_edit = QDateEdit(QDate.currentDate().addDays(30))
-        self.province_combo = QComboBox()
-
-        # Populate combos
-        self.populate_combos()
-
-        form_layout.addRow("Invoice Number:", self.invoice_number_edit)
-        form_layout.addRow("Customer:", self.customer_combo)
-        form_layout.addRow("Company:", self.company_combo)
-        form_layout.addRow("Posting Date:", self.posting_date_edit)
-        form_layout.addRow("Due Date:", self.due_date_edit)
-        form_layout.addRow("Province:", self.province_combo)
-
-        layout.addWidget(form_group)
-
-        # Items section
-        items_group = QGroupBox("Items")
-        items_layout = QVBoxLayout(items_group)
-
-        # Items table
-        self.items_table = QTableWidget(0, 6)
-        self.items_table.setHorizontalHeaderLabels(
-            ["Item", "Quantity", "Rate", "Amount", "Tax Rate", "HS Code"]
-        )
-        items_layout.addWidget(self.items_table)
-
-        # Add item button
-        add_item_btn = QPushButton("Add Item")
-        add_item_btn.clicked.connect(self.add_item_row)
-        items_layout.addWidget(add_item_btn)
-
-        layout.addWidget(items_group)
-
-        # Dialog buttons
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
-
-    def populate_combos(self):
-        # In a real application, populate from database
-        self.customer_combo.addItems(["Customer 1", "Customer 2", "Customer 3"])
-        self.company_combo.addItems(["Company A", "Company B"])
-        self.province_combo.addItems(["Punjab", "Sindh", "KPK", "Balochistan"])
-
-    def add_item_row(self):
-        row = self.items_table.rowCount()
-        self.items_table.insertRow(row)
-
-        # Add default values
-        self.items_table.setItem(row, 0, QTableWidgetItem(""))  # Item
-        self.items_table.setItem(row, 1, QTableWidgetItem("1"))  # Quantity
-        self.items_table.setItem(row, 2, QTableWidgetItem("0.00"))  # Rate
-        self.items_table.setItem(row, 3, QTableWidgetItem("0.00"))  # Amount
-        self.items_table.setItem(row, 4, QTableWidgetItem("0.00"))  # Tax Rate
-        self.items_table.setItem(row, 5, QTableWidgetItem(""))  # HS Code
-
-    def load_invoice_data(self):
-        # Load existing invoice data
-        session = self.db_manager.get_session()
-        invoice = session.query(SalesInvoice).filter_by(id=self.invoice_id).first()
-
-        if invoice:
-            self.invoice_number_edit.setText(invoice.invoice_number)
-            # Set other fields...
-
-
 class MainWindow(QMainWindow):
     """Main application window"""
 
@@ -485,19 +394,43 @@ class MainWindow(QMainWindow):
         # Regular toolbar
         toolbar_layout = QHBoxLayout()
 
-        new_invoice_btn = QPushButton("New Invoice")
+        new_invoice_btn = QPushButton("📄 New Invoice")
         new_invoice_btn.clicked.connect(self.new_invoice)
+        new_invoice_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+        """)
         toolbar_layout.addWidget(new_invoice_btn)
 
-        edit_invoice_btn = QPushButton("Edit Invoice")
+        edit_invoice_btn = QPushButton("✏️ Edit Invoice")
         edit_invoice_btn.clicked.connect(self.edit_invoice)
         toolbar_layout.addWidget(edit_invoice_btn)
 
-        submit_to_fbr_btn = QPushButton("Submit to FBR")
+        submit_to_fbr_btn = QPushButton("🚀 Submit to FBR")
         submit_to_fbr_btn.clicked.connect(self.submit_selected_to_fbr)
+        submit_to_fbr_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #fd7e14;
+                color: white;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #e8590c;
+            }
+        """)
         toolbar_layout.addWidget(submit_to_fbr_btn)
 
-        refresh_btn = QPushButton("Refresh")
+        refresh_btn = QPushButton("🔄 Refresh")
         refresh_btn.clicked.connect(self.refresh_invoices_table)
         toolbar_layout.addWidget(refresh_btn)
 
@@ -699,15 +632,15 @@ class MainWindow(QMainWindow):
         # Queue controls
         controls_layout = QHBoxLayout()
 
-        process_queue_btn = QPushButton("Process Queue")
+        process_queue_btn = QPushButton("⚡ Process Queue")
         process_queue_btn.clicked.connect(self.process_fbr_queue)
         controls_layout.addWidget(process_queue_btn)
 
-        retry_failed_btn = QPushButton("Retry Failed")
+        retry_failed_btn = QPushButton("🔄 Retry Failed")
         retry_failed_btn.clicked.connect(self.retry_failed_items)
         controls_layout.addWidget(retry_failed_btn)
 
-        clear_completed_btn = QPushButton("Clear Completed")
+        clear_completed_btn = QPushButton("🧹 Clear Completed")
         clear_completed_btn.clicked.connect(self.clear_completed_queue_items)
         controls_layout.addWidget(clear_completed_btn)
 
@@ -739,7 +672,7 @@ class MainWindow(QMainWindow):
         controls_layout.addWidget(QLabel("Filter:"))
         controls_layout.addWidget(filter_combo)
 
-        export_logs_btn = QPushButton("Export Logs")
+        export_logs_btn = QPushButton("📊 Export Logs")
         export_logs_btn.clicked.connect(self.export_logs)
         controls_layout.addWidget(export_logs_btn)
 
@@ -790,7 +723,7 @@ class MainWindow(QMainWindow):
         self.connection_status_label = QLabel("Not Connected")
         self.connection_status_label.setStyleSheet("color: red;")
         
-        test_connection_btn = QPushButton("Test Connection")
+        test_connection_btn = QPushButton("🔍 Test Connection")
         test_connection_btn.clicked.connect(self.test_database_connection)
         
         db_layout.addRow("Connection Status:", self.connection_status_label)
@@ -801,11 +734,11 @@ class MainWindow(QMainWindow):
         # Button layout
         button_layout = QHBoxLayout()
         
-        load_settings_btn = QPushButton("Load Settings")
+        load_settings_btn = QPushButton("📥 Load Settings")
         load_settings_btn.clicked.connect(self.load_settings)
         button_layout.addWidget(load_settings_btn)
         
-        save_settings_btn = QPushButton("Save Settings")
+        save_settings_btn = QPushButton("💾 Save Settings")
         save_settings_btn.clicked.connect(self.save_settings)
         save_settings_btn.setStyleSheet("""
             QPushButton {
@@ -913,20 +846,82 @@ class MainWindow(QMainWindow):
         self.refresh_logs_table()
 
     def new_invoice(self):
-        """Create new invoice"""
-        dialog = InvoiceDialog(self.db_manager, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            # Save invoice logic here
+        """Create new invoice using the FBR Invoice Dialog"""
+        mode = "sandbox" if self.is_sandbox_mode else "production"
+        
+        dialog = FBRInvoiceDialog(self, mode="sandbox" if self.is_sandbox_mode else "production")
+        dialog.invoice_saved.connect(self.on_invoice_saved)
+        
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("New invoice created successfully")
             self.refresh_invoices_table()
 
     def edit_invoice(self):
-        """Edit selected invoice"""
+        """Edit selected invoice using the FBR Invoice Dialog"""
         current_row = self.invoices_table.currentRow()
         if current_row >= 0:
-            invoice_id = self.invoices_table.item(current_row, 0).text()
-            dialog = InvoiceDialog(self.db_manager, self, invoice_id)
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                self.refresh_invoices_table()
+            try:
+                invoice_id = int(self.invoices_table.item(current_row, 0).text())
+                
+                # Get invoice data from database
+                session = self.db_manager.get_session()
+                invoice = session.query(SalesInvoice).filter_by(id=invoice_id).first()
+                
+                if not invoice:
+                    QMessageBox.warning(self, "Error", "Invoice not found!")
+                    return
+                
+                # Convert database invoice to dialog format
+                invoice_data = self._convert_db_invoice_to_dialog_format(invoice)
+                
+                mode = "sandbox" if self.is_sandbox_mode else "production"
+                dialog = FBRInvoiceDialog(self, invoice_data=invoice_data, mode=mode)
+                dialog.invoice_saved.connect(self.on_invoice_updated)
+                
+                result = dialog.exec()
+                
+                if result == QDialog.DialogCode.Accepted:
+                    self.statusBar().showMessage("Invoice updated successfully")
+                    self.refresh_invoices_table()
+                    
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to edit invoice: {str(e)}")
+        else:
+            QMessageBox.information(self, "Information", "Please select an invoice to edit")
+
+    def _convert_db_invoice_to_dialog_format(self, invoice):
+        """Convert database invoice to dialog format"""
+        # This is a simplified conversion - you might need to expand based on your actual data structure
+        return {
+            "invoiceType": "Sale Invoice",
+            "invoiceDate": invoice.posting_date.strftime('%Y-%m-%d') if invoice.posting_date else datetime.now().strftime('%Y-%m-%d'),
+            "buyerBusinessName": "Sample Customer",  # Get from related tables
+            "buyerNTNCNIC": "",  # Get from related tables
+            "items": []  # Get from related invoice items tables
+        }
+
+    def on_invoice_saved(self, invoice_data):
+        """Handle when a new invoice is saved"""
+        try:
+            # Save to database
+            invoice_id = self._save_invoice_to_database(invoice_data)
+            
+            # Add to queue if configured
+            if self.db_manager:
+                queue_manager = FBRQueueManager(self.db_manager)
+                queue_manager.add_to_queue("Sales Invoice", invoice_id, priority=5)
+            
+            self.statusBar().showMessage(f"Invoice saved with ID: {invoice_id}")
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", f"Failed to save invoice: {str(e)}")
+
+    def on_invoice_updated(self, invoice_data):
+        """Handle when an invoice is updated"""
+        # Similar to on_invoice_saved but for updates
+        self.statusBar().showMessage("Invoice updated successfully")
 
     def submit_selected_to_fbr(self):
         """Submit selected invoices to FBR"""
