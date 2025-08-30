@@ -1,3 +1,4 @@
+# gui/dialogs/invoice_dialog.py - Updated with FBR API integration
 import sys
 from datetime import datetime, date
 from PyQt6.QtWidgets import (
@@ -5,14 +6,42 @@ from PyQt6.QtWidgets import (
     QFormLayout, QWidget, QPushButton, QTableWidget, QTableWidgetItem,
     QLabel, QLineEdit, QComboBox, QGroupBox, QDateEdit, QCheckBox,
     QSpinBox, QDoubleSpinBox, QTextEdit, QHeaderView, QMessageBox,
-    QDialogButtonBox, QTabWidget, QScrollArea, QSplitter
+    QDialogButtonBox, QTabWidget, QScrollArea, QSplitter, QProgressBar
 )
-from PyQt6.QtCore import QDate, Qt, pyqtSignal
+from PyQt6.QtCore import QDate, Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QPalette, QColor
+
+# Import the new FBR API service
+try:
+    from fbr_core.fbr_api_service import FBRDropdownManager, FBRDateUtils, DropdownDataFormatter
+except ImportError as e:
+    print(f"Warning: Could not import FBR API service: {e}")
+    # Fallback classes for when API service is not available
+    class FBRDropdownManager:
+        def __init__(self, db_manager): pass
+        def load_dropdown_data(self, *args, **kwargs): pass
+        def format_data_for_dropdown(self, key, data): return []
+        def cleanup_threads(self): pass
+    
+    class FBRDateUtils:
+        @staticmethod
+        def format_date_for_fbr(date_obj): return date_obj.strftime('%d-%b-%Y')
+        @staticmethod 
+        def format_date_iso(date_obj): return date_obj.strftime('%Y-%m-%d')
+    
+    class DropdownDataFormatter:
+        @staticmethod
+        def extract_hs_code_from_dropdown_text(text): 
+            try: return text.split(' - ')[0].strip()
+            except: return ""
+        @staticmethod
+        def extract_id_from_dropdown_text(text, position=-1):
+            try: return text.split(' - ')[position].strip()  
+            except: return ""
 
 
 class FBRInvoiceDialog(QDialog):
-    """Enhanced FBR Invoice Dialog matching the form structure"""
+    """Enhanced FBR Invoice Dialog with API integration for dropdowns"""
     
     invoice_saved = pyqtSignal(dict)  # Signal when invoice is saved
     
@@ -22,12 +51,21 @@ class FBRInvoiceDialog(QDialog):
         self.mode = mode.lower()
         self.is_editing = invoice_data is not None
         
+        # Initialize API service
+        self.db_manager = getattr(parent, 'db_manager', None) if parent else None
+        self.dropdown_manager = FBRDropdownManager(self.db_manager) if self.db_manager else None
+        self.formatter = DropdownDataFormatter()
+        
+        # Loading state tracking
+        self.loading_dropdowns = set()
+        self.dropdown_data_cache = {}
+        
         self.setWindowTitle("FBR Invoice Details")
         self.setModal(True)
         self.resize(1400, 900)
         
         self.setStyleSheet("""
-            QDialog { background-color: #0f1115; }   /* dark base to match screenshot */
+            QDialog { background-color: #0f1115; }
             QLabel { color: #eaeef6; font-size: 13px; }
             QGroupBox {
                 background: #1b2028;
@@ -61,17 +99,23 @@ class FBRInvoiceDialog(QDialog):
                 box-shadow: 0 0 0 2px rgba(90,162,255,0.18);
             }
 
-            /* Combobox / Date arrows */
+            /* Combobox styling */
             QComboBox::drop-down, QDateEdit::drop-down {
                 width: 26px;
                 border-left: 1px solid #334561;
             }
             QComboBox::down-arrow, QDateEdit::down-arrow {
-                image: none; /* let system draw or keep clean caret */
+                image: none;
                 width: 0; height: 0; margin: 0;
             }
 
-            /* Table header + text */
+            /* Loading state styling */
+            QComboBox[loading="true"] {
+                background: #1a1a1a;
+                color: #888;
+            }
+
+            /* Table styling */
             QTableWidget { background: #0f141c; color:#eaeef6; border: 1px solid #334561; }
             QHeaderView::section {
                 background: #17202b; color: #cfe2ff; border: 1px solid #334561; padding: 6px; font-weight: 600;
@@ -84,12 +128,27 @@ class FBRInvoiceDialog(QDialog):
             }
             QPushButton:hover { background:#7bb6ff; }
             QPushButton:pressed { background:#4b92ec; }
+            QPushButton:disabled { background:#333; color:#666; }
 
-            /* Optional small shadow around groups (Qt uses border-color shadow) */
+            /* Progress bar for loading */
+            QProgressBar {
+                border: 2px solid #334561;
+                border-radius: 5px;
+                text-align: center;
+                background: #0f141c;
+                color: #eaeef6;
+            }
+            QProgressBar::chunk {
+                background-color: #5aa2ff;
+                border-radius: 3px;
+            }
         """)
 
         self.setup_ui()
-        self.populate_dropdowns()
+        self.setup_signals()
+        
+        # Load dropdown data from APIs
+        self.populate_dropdowns_from_api()
         
         if self.is_editing and invoice_data:
             self.load_invoice_data()
@@ -103,10 +162,20 @@ class FBRInvoiceDialog(QDialog):
         scroll_widget = QWidget()
         scroll_layout = QVBoxLayout(scroll_widget)
         
-        # Header with mode indicator
+        # Header with mode indicator and loading status
         header_layout = QHBoxLayout()
+        
+        # Loading indicator
+        self.loading_label = QLabel("Loading dropdown data...")
+        self.loading_label.setStyleSheet("color: #ffc107; font-weight: bold;")
+        self.loading_progress = QProgressBar()
+        self.loading_progress.setRange(0, 0)  # Indeterminate
+        self.loading_progress.setMaximumHeight(4)
+        
+        header_layout.addWidget(self.loading_label)
+        header_layout.addWidget(self.loading_progress)
+        
         mode_label = QLabel(f"Mode: {self.mode.title()}")
-
         mode_bg = "#28a745" if self.mode == "production" else "#ffc107"
         mode_label.setStyleSheet(
             f"background-color: {mode_bg};"
@@ -122,7 +191,6 @@ class FBRInvoiceDialog(QDialog):
                 
         # Create main sections
         self.create_buyer_seller_section(scroll_layout)
-        # self.create_invoice_details_section(scroll_layout)
         self.create_item_details_section(scroll_layout)
         self.create_items_list_section(scroll_layout)
         
@@ -146,6 +214,7 @@ class FBRInvoiceDialog(QDialog):
         save_btn = button_box.button(QDialogButtonBox.StandardButton.Save)
         save_btn.setText("💾 Save Invoice")
         save_btn.setStyleSheet("background-color: #28a745;")
+        self.save_btn = save_btn  # Keep reference for enabling/disabling
         
         cancel_btn = button_box.button(QDialogButtonBox.StandardButton.Cancel)
         cancel_btn.setText("❌ Cancel")
@@ -154,18 +223,12 @@ class FBRInvoiceDialog(QDialog):
         main_layout.addWidget(button_box)
 
     def create_buyer_seller_section(self, parent_layout):
-        """Create seller + buyer information section (polished)"""
+        """Create seller + buyer information section with API-populated dropdowns"""
         section_group = QGroupBox("FBR Invoice Details")
         section_layout = QGridLayout(section_group)
         section_layout.setContentsMargins(14, 10, 14, 12)
         section_layout.setHorizontalSpacing(18)
         section_layout.setVerticalSpacing(10)
-
-        # provinces list once
-        provinces = [
-            "Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan",
-            "Gilgit-Baltistan", "Azad Kashmir", "Islamabad Capital Territory"
-        ]
 
         self._req_lbl = lambda t: f"{t}<span style='color:#1e90ff'>*</span>"
 
@@ -180,15 +243,15 @@ class FBRInvoiceDialog(QDialog):
 
         section_layout.addWidget(QLabel(self._req_lbl("Seller Province")), 0, 5)
         self.seller_province_combo = QComboBox()
-        self.seller_province_combo.addItems(provinces)
+        self.seller_province_combo.setProperty("loading", "true")
         section_layout.addWidget(self.seller_province_combo, 0, 6)
 
         section_layout.addWidget(QLabel("Seller Address:"), 1, 1)
         self.seller_address_edit = QLineEdit()
         self.seller_address_edit.setPlaceholderText("Company address / branch")
-        section_layout.addWidget(self.seller_address_edit, 1, 2, 1, 2)  # span 2 cols
+        section_layout.addWidget(self.seller_address_edit, 1, 2, 1, 2)
 
-        # -------- Row 2: BUYER (part 1) --------
+        # -------- Row 2: BUYER --------
         section_layout.addWidget(QLabel(self._req_lbl("Buyer Registration No.")), 2, 1)
         self.buyer_reg_no_edit = QLineEdit()
         section_layout.addWidget(self.buyer_reg_no_edit, 2, 2)
@@ -200,12 +263,13 @@ class FBRInvoiceDialog(QDialog):
 
         section_layout.addWidget(QLabel("Buyer Type:"), 2, 5)
         self.buyer_type_combo = QComboBox()
+        self.buyer_type_combo.addItems(["Registered", "Unregistered"])
         section_layout.addWidget(self.buyer_type_combo, 2, 6)
 
-        # -------- Row 3: BUYER (part 2) --------
+        # -------- Row 3: BUYER Province --------
         section_layout.addWidget(QLabel(self._req_lbl("Buyer Province")), 3, 1)
         self.buyer_province_combo = QComboBox()
-        self.buyer_province_combo.addItems(provinces)
+        self.buyer_province_combo.setProperty("loading", "true")
         section_layout.addWidget(self.buyer_province_combo, 3, 2)
 
         section_layout.addWidget(QLabel("Buyer Address:"), 3, 3)
@@ -216,6 +280,7 @@ class FBRInvoiceDialog(QDialog):
         # -------- Row 4: Invoice meta --------
         section_layout.addWidget(QLabel(self._req_lbl("Invoice Type")), 4, 1)
         self.invoice_type_combo = QComboBox()
+        self.invoice_type_combo.setProperty("loading", "true")
         section_layout.addWidget(self.invoice_type_combo, 4, 2)
 
         section_layout.addWidget(QLabel("Invoice No.:"), 4, 3)
@@ -227,25 +292,26 @@ class FBRInvoiceDialog(QDialog):
         section_layout.addWidget(QLabel(self._req_lbl("Invoice Date")), 4, 5)
         self.invoice_date_edit = QDateEdit(QDate.currentDate())
         self.invoice_date_edit.setCalendarPopup(True)
-        self.invoice_date_edit.setDisplayFormat("d/M/yyyy")  # 7/7/2025 style
+        self.invoice_date_edit.setDisplayFormat("d/M/yyyy")
         section_layout.addWidget(self.invoice_date_edit, 4, 6)
 
         # -------- Row 5: Supply info --------
         section_layout.addWidget(QLabel(self._req_lbl("Sale Origination Province of Supplier")), 5, 1)
         self.sale_origination_combo = QComboBox()
-        self.sale_origination_combo.addItems(provinces)
+        self.sale_origination_combo.setProperty("loading", "true")
         section_layout.addWidget(self.sale_origination_combo, 5, 2)
 
         section_layout.addWidget(QLabel(self._req_lbl("Destination of Supply")), 5, 3)
         self.destination_supply_combo = QComboBox()
-        self.destination_supply_combo.addItems(provinces)
+        self.destination_supply_combo.setProperty("loading", "true")
         section_layout.addWidget(self.destination_supply_combo, 5, 4)
 
         section_layout.addWidget(QLabel(self._req_lbl("Sale Type")), 5, 5)
         self.sale_type_combo = QComboBox()
+        self.sale_type_combo.setProperty("loading", "true")
         section_layout.addWidget(self.sale_type_combo, 5, 6)
 
-        # column sizing
+        # Column sizing
         section_layout.setColumnStretch(0, 1)
         section_layout.setColumnStretch(1, 0)
         section_layout.setColumnStretch(2, 2)
@@ -256,37 +322,8 @@ class FBRInvoiceDialog(QDialog):
 
         parent_layout.addWidget(section_group)
 
-
-
-    # def create_invoice_details_section(self, parent_layout):
-    #     """Create invoice details section"""
-    #     details_group = QGroupBox("📋 Additional Information")
-    #     details_layout = QGridLayout(details_group)
-        
-    #     # Reference fields
-    #     details_layout.addWidget(QLabel("Invoice Ref No:"), 0, 0)
-    #     self.invoice_ref_edit = QLineEdit()
-    #     self.invoice_ref_edit.setPlaceholderText("Optional reference number")
-    #     details_layout.addWidget(self.invoice_ref_edit, 0, 1)
-        
-    #     # Scenario ID for sandbox
-    #     if self.mode == "sandbox":
-    #         details_layout.addWidget(QLabel("Scenario ID:"), 0, 2)
-    #         self.scenario_id_combo = QComboBox()
-    #         self.scenario_id_combo.setEditable(True)
-    #         details_layout.addWidget(self.scenario_id_combo, 0, 3)
-        
-    #     # Notes/Comments
-    #     details_layout.addWidget(QLabel("Notes:"), 1, 0)
-    #     self.notes_edit = QTextEdit()
-    #     self.notes_edit.setMaximumHeight(80)
-    #     self.notes_edit.setPlaceholderText("Optional notes or comments")
-    #     details_layout.addWidget(self.notes_edit, 1, 1, 1, 3)
-        
-    #     parent_layout.addWidget(details_group)
-
     def create_item_details_section(self, parent_layout):
-        """Create item detail entry section"""
+        """Create item detail entry section with API-populated dropdowns"""
         item_group = QGroupBox("📦 Item Detail")
         item_layout = QGridLayout(item_group)
         
@@ -294,6 +331,7 @@ class FBRInvoiceDialog(QDialog):
         item_layout.addWidget(QLabel("HS Code Description*:"), 0, 0)
         self.hs_code_combo = QComboBox()
         self.hs_code_combo.setEditable(True)
+        self.hs_code_combo.setProperty("loading", "true")
         item_layout.addWidget(self.hs_code_combo, 0, 1, 1, 2)
         
         item_layout.addWidget(QLabel("Product Description*:"), 0, 3)
@@ -305,10 +343,12 @@ class FBRInvoiceDialog(QDialog):
         item_layout.addWidget(QLabel("Rate*:"), 1, 0)
         self.rate_combo = QComboBox()
         self.rate_combo.setEditable(True)
+        self.rate_combo.setProperty("loading", "true")
         item_layout.addWidget(self.rate_combo, 1, 1)
         
         item_layout.addWidget(QLabel("UoM*:"), 1, 2)
         self.uom_combo = QComboBox()
+        self.uom_combo.setProperty("loading", "true")
         item_layout.addWidget(self.uom_combo, 1, 3)
         
         item_layout.addWidget(QLabel("Quantity/Electricity Units*:"), 1, 4)
@@ -366,12 +406,13 @@ class FBRInvoiceDialog(QDialog):
         item_layout.addWidget(QLabel("SRO/Schedule No:"), 4, 3)
         self.sro_schedule_combo = QComboBox()
         self.sro_schedule_combo.setEditable(True)
+        self.sro_schedule_combo.setProperty("loading", "true")
         item_layout.addWidget(self.sro_schedule_combo, 4, 4)
         
         item_layout.addWidget(QLabel("Item Sr. No:"), 4, 5)
-        self.item_sr_spin = QSpinBox()
-        self.item_sr_spin.setRange(1, 9999)
-        item_layout.addWidget(self.item_sr_spin, 4, 6)
+        self.item_sr_combo = QComboBox()
+        self.item_sr_combo.setProperty("loading", "true")
+        item_layout.addWidget(self.item_sr_combo, 4, 6)
         
         # Row 6: Action buttons
         button_layout = QHBoxLayout()
@@ -389,11 +430,6 @@ class FBRInvoiceDialog(QDialog):
         
         item_layout.addLayout(button_layout, 5, 0, 1, 7)
         
-        # Connect signals for auto-calculation
-        self.quantity_spin.valueChanged.connect(self.calculate_amounts)
-        self.value_excl_st_spin.valueChanged.connect(self.calculate_amounts)
-        self.rate_combo.currentTextChanged.connect(self.calculate_tax)
-        
         parent_layout.addWidget(item_group)
 
     def create_items_list_section(self, parent_layout):
@@ -402,7 +438,7 @@ class FBRInvoiceDialog(QDialog):
         list_layout = QVBoxLayout(list_group)
         
         # Items table
-        self.items_table = QTableWidget(0, 17)  # 0..16 inclusive
+        self.items_table = QTableWidget(0, 17)
         self.items_table.setHorizontalHeaderLabels([
             "Sr. No.", "Action", "Status", "Remarks", "Invoice Type",
             "Invoice No.", "Description", "Product Description",
@@ -464,120 +500,293 @@ class FBRInvoiceDialog(QDialog):
         
         parent_layout.addWidget(list_group)
 
-
-
-    def populate_dropdowns(self):
-        # """Populate all dropdown menus from database"""
-        # if not hasattr(self.parent(), 'db_manager') or not self.parent().db_manager:
-        #     self._populate_default_dropdowns()
-        #     return
-            
-        # session = self.parent().db_manager.get_session()
+    def setup_signals(self):
+        """Setup signal connections for form interactions"""
         
-        # try:
-        #     # # Provinces
-        #     # provinces = session.query(Province).all()
-        #     # province_names = [p.name for p in provinces]
-        #     # if province_names:
-        #     #     self.seller_province_combo.addItems(province_names)
-        #     #     self.buyer_province_combo.addItems(province_names)
-        #     #     self.sale_origination_combo.addItems(province_names)
-        #     #     self.destination_supply_combo.addItems(province_names)
-            
-        #     # Sale Types with tax rates
-        #     sale_types = session.query(SaleType).all()
-        #     sale_type_names = [s.name for s in sale_types]
-        #     if sale_type_names:
-        #         self.sale_type_combo.addItems(sale_type_names)
-        #         # Store tax rates for lookup
-        #         self.sale_type_tax_rates = {s.name: s.tax_rate for s in sale_types}
-            
-        #     # HS Codes
-        #     hs_codes = session.query(HSCode).all()
-        #     hs_code_items = [f"{h.code} - {h.description}" for h in hs_codes]
-        #     if hs_code_items:
-        #         self.hs_code_combo.addItems(hs_code_items)
-            
-        #     # UOM Types
-        #     uom_types = session.query(UOMType).all()
-        #     uom_names = [u.name for u in uom_types]
-        #     if uom_names:
-        #         self.uom_combo.addItems(uom_names)
-            
-        #     # Tax rates from sale types
-        #     tax_rates = [f"{s.tax_rate}%" for s in sale_types]
-        #     if tax_rates:
-        #         self.rate_combo.addItems(list(set(tax_rates)))  # Remove duplicates
-            
-        # except Exception as e:
-        #     print(f"Error loading dropdown data: {e}")
-        #     self._populate_default_dropdowns()
+        # Connect dropdown change events for cascading updates
+        self.hs_code_combo.currentTextChanged.connect(self.on_hs_code_changed)
+        self.sale_type_combo.currentTextChanged.connect(self.on_sale_type_changed)
+        self.sro_schedule_combo.currentTextChanged.connect(self.on_sro_schedule_changed)
+        self.invoice_date_edit.dateChanged.connect(self.on_date_changed)
+        self.sale_origination_combo.currentTextChanged.connect(self.on_origination_changed)
+        
+        # Connect calculation events
+        self.quantity_spin.valueChanged.connect(self.calculate_amounts)
+        self.value_excl_st_spin.valueChanged.connect(self.calculate_amounts)
+        self.rate_combo.currentTextChanged.connect(self.calculate_tax)
 
-    def _populate_default_dropdowns(self):
-        """Fallback method with default values"""
-        # Your existing hardcoded dropdown population code here
+    def populate_dropdowns_from_api(self):
+        """Populate dropdowns using FBR API data"""
+        if not self.dropdown_manager:
+            self._populate_fallback_dropdowns()
+            return
+        
+        # Show loading state
+        self.show_loading_state(True)
+        
+        # Track which dropdowns need to be loaded
+        dropdowns_to_load = [
+            'provinces',
+            'document_types', 
+            'hs_codes',
+            'sro_item_codes',
+            'transaction_types',
+            'uom_types'
+        ]
+        
+        self.loading_dropdowns = set(dropdowns_to_load)
+        
+        # Load each dropdown
+        for dropdown_key in dropdowns_to_load:
+            self.dropdown_manager.load_dropdown_data(
+                dropdown_key, 
+                callback=self.on_dropdown_data_loaded
+            )
+
+    def on_dropdown_data_loaded(self, dropdown_key: str, data: list):
+        """Handle dropdown data loaded from API"""
+        try:
+            # Format the data for display
+            formatted_items = self.dropdown_manager.format_data_for_dropdown(dropdown_key, data)
+            
+            # Cache the data
+            self.dropdown_data_cache[dropdown_key] = {
+                'raw_data': data,
+                'formatted_items': formatted_items
+            }
+            
+            # Populate the appropriate dropdowns
+            self._populate_dropdown_widgets(dropdown_key, formatted_items)
+            
+            # Remove from loading set
+            self.loading_dropdowns.discard(dropdown_key)
+            
+            # Update loading state
+            if not self.loading_dropdowns:
+                self.show_loading_state(False)
+                
+        except Exception as e:
+            print(f"Error loading dropdown {dropdown_key}: {e}")
+            self.loading_dropdowns.discard(dropdown_key)
+            
+            if not self.loading_dropdowns:
+                self.show_loading_state(False)
+
+    def _populate_dropdown_widgets(self, dropdown_key: str, items: list):
+        """Populate specific dropdown widgets with data"""
+        
+        # Remove loading state from widgets
+        if dropdown_key == 'provinces':
+            self._populate_combo_widget(self.seller_province_combo, items)
+            self._populate_combo_widget(self.buyer_province_combo, items)
+            self._populate_combo_widget(self.sale_origination_combo, items)
+            self._populate_combo_widget(self.destination_supply_combo, items)
+            
+        elif dropdown_key == 'document_types':
+            self._populate_combo_widget(self.invoice_type_combo, items)
+            
+        elif dropdown_key == 'hs_codes':
+            self._populate_combo_widget(self.hs_code_combo, items)
+            
+        elif dropdown_key == 'sro_item_codes':
+            self._populate_combo_widget(self.item_sr_combo, items)
+            
+        elif dropdown_key == 'transaction_types':
+            self._populate_combo_widget(self.sale_type_combo, items)
+            
+        elif dropdown_key == 'uom_types':
+            self._populate_combo_widget(self.uom_combo, items)
+
+    def _populate_combo_widget(self, combo_widget: QComboBox, items: list):
+        """Populate a combo widget with items and remove loading state"""
+        combo_widget.clear()
+        combo_widget.addItems(items)
+        combo_widget.setProperty("loading", "false")
+        combo_widget.setEnabled(True)
+        combo_widget.style().polish(combo_widget)  # Refresh styling
+
+    def show_loading_state(self, is_loading: bool):
+        """Show or hide loading state"""
+        self.loading_label.setVisible(is_loading)
+        self.loading_progress.setVisible(is_loading)
+        
+        if is_loading:
+            self.loading_label.setText(f"Loading dropdown data... ({len(self.loading_dropdowns)} remaining)")
+            self.save_btn.setEnabled(False)
+        else:
+            self.loading_label.setText("✅ All data loaded")
+            self.save_btn.setEnabled(True)
+            
+            # Auto-hide after 2 seconds
+            QTimer.singleShot(2000, lambda: self.loading_label.setVisible(False))
+
+    def on_hs_code_changed(self):
+        """Handle HS code change - filter UOM options"""
+        if not self.dropdown_manager:
+            return
+            
+        hs_code_text = self.hs_code_combo.currentText()
+        if not hs_code_text:
+            return
+            
+        # Extract HS code from formatted text
+        hs_code = self.formatter.extract_hs_code_from_dropdown_text(hs_code_text)
+        
+        if hs_code:
+            # Show loading state for UOM combo
+            self.uom_combo.setProperty("loading", "true")
+            self.uom_combo.setEnabled(False)
+            self.uom_combo.style().polish(self.uom_combo)
+            
+            # Load filtered UOM options
+            self.dropdown_manager.load_dropdown_data(
+                'hs_uom',
+                callback=self.on_hs_uom_loaded,
+                hs_code=hs_code,
+                annexure_id=3
+            )
+
+    def on_hs_uom_loaded(self, dropdown_key: str, data: list):
+        """Handle HS-filtered UOM data loaded"""
+        if dropdown_key == 'hs_uom':
+            formatted_items = self.dropdown_manager.format_data_for_dropdown(dropdown_key, data)
+            self._populate_combo_widget(self.uom_combo, formatted_items)
+
+    def on_sale_type_changed(self):
+        """Handle sale type change - update rates"""
+        if not self.dropdown_manager:
+            return
+            
+        sale_type_text = self.sale_type_combo.currentText()
+        if not sale_type_text:
+            return
+        
+        # Extract transaction type ID
+        trans_type_id = self.formatter.extract_id_from_dropdown_text(sale_type_text, -1)
+        
+        # Get current date and origination province
+        current_date = FBRDateUtils.format_date_for_fbr(self.invoice_date_edit.date())
+        origination_text = self.sale_origination_combo.currentText()
+        
+        if trans_type_id and origination_text:
+            # For now, use province index as ID (this should be mapped properly)
+            origination_id = self._get_province_id_from_text(origination_text)
+            
+            if origination_id:
+                # Show loading state for rate combo
+                self.rate_combo.setProperty("loading", "true")
+                self.rate_combo.setEnabled(False)
+                self.rate_combo.style().polish(self.rate_combo)
+                
+                # Load rate options
+                self.dropdown_manager.load_dropdown_data(
+                    'sale_type_rates',
+                    callback=self.on_sale_type_rates_loaded,
+                    date=current_date,
+                    trans_type_id=int(trans_type_id),
+                    origination_supplier=origination_id
+                )
+
+    def on_sale_type_rates_loaded(self, dropdown_key: str, data: list):
+        """Handle sale type rates data loaded"""
+        if dropdown_key == 'sale_type_rates':
+            formatted_items = self.dropdown_manager.format_data_for_dropdown(dropdown_key, data)
+            self._populate_combo_widget(self.rate_combo, formatted_items)
+
+    def on_sro_schedule_changed(self):
+        """Handle SRO schedule change - update item serial numbers"""
+        if not self.dropdown_manager:
+            return
+            
+        sro_text = self.sro_schedule_combo.currentText()
+        if not sro_text:
+            return
+        
+        # Extract SRO ID
+        sro_id = self.formatter.extract_id_from_dropdown_text(sro_text, -1)
+        current_date = FBRDateUtils.format_date_iso(self.invoice_date_edit.date())
+        
+        if sro_id:
+            # Load SRO items
+            self.dropdown_manager.load_dropdown_data(
+                'sro_items',
+                callback=self.on_sro_items_loaded,
+                date=current_date,
+                sro_id=int(sro_id)
+            )
+
+    def on_sro_items_loaded(self, dropdown_key: str, data: list):
+        """Handle SRO items data loaded"""
+        if dropdown_key == 'sro_items':
+            formatted_items = self.dropdown_manager.format_data_for_dropdown(dropdown_key, data)
+            self._populate_combo_widget(self.item_sr_combo, formatted_items)
+
+    def on_date_changed(self):
+        """Handle date change - refresh date-dependent dropdowns"""
+        # This could trigger refresh of rate and SRO data if needed
         pass
 
-    # Add these methods for creating new records
-    def create_new_customer(self):
-        """Create new customer dialog"""
-        ntn_cnic = self.buyer_reg_no_edit.text().strip()
-        name = self.buyer_name_edit.text().strip()
-        
-        if not ntn_cnic or not name:
-            QMessageBox.warning(self, "Error", "NTN/CNIC and Name are required")
-            return
-        
-        session = self.parent().db_manager.get_session()
-        
-        try:
-            customer = Customer(
-                ntn_cnic=ntn_cnic,
-                name=name,
-                address=self.buyer_address_edit.text().strip(),
-                province=self.buyer_province_combo.currentText()
-            )
-            session.add(customer)
-            session.commit()
-            QMessageBox.information(self, "Success", "Customer created successfully")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create customer: {str(e)}")
+    def on_origination_changed(self):
+        """Handle origination province change - refresh rates"""
+        # This could trigger refresh of rate data
+        pass
 
-    def create_new_buyer(self):
-        """Create new buyer dialog"""  
-        ntn_cnic = self.seller_reg_no_edit.text().strip()
-        name = self.seller_name_edit.text().strip()
-        
-        if not ntn_cnic or not name:
-            QMessageBox.warning(self, "Error", "NTN/CNIC and Name are required")
-            return
-        
-        session = self.parent().db_manager.get_session()
-        
-        try:
-            buyer = Buyer(
-                ntn_cnic=ntn_cnic,
-                name=name,
-                address=self.seller_address_edit.text().strip(),
-                province=self.seller_province_combo.currentText()
-            )
-            session.add(buyer)
-            session.commit()
-            QMessageBox.information(self, "Success", "Buyer created successfully")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to create buyer: {str(e)}")
+    def _get_province_id_from_text(self, province_text: str):
+        """Get province ID from province text (this should map to actual API data)"""
+        # This is a simplified mapping - you should use the actual province data from API
+        province_map = {
+            'PUNJAB': 7,
+            'SINDH': 8,
+            # Add other provinces as needed
+        }
+        return province_map.get(province_text.upper())
 
+    def _populate_fallback_dropdowns(self):
+        """Fallback method with default values when API is not available"""
+        # Fallback province list
+        provinces = [
+            "Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan",
+            "Gilgit-Baltistan", "Azad Kashmir", "Islamabad Capital Territory"
+        ]
+        
+        self.seller_province_combo.addItems(provinces)
+        self.buyer_province_combo.addItems(provinces)
+        self.sale_origination_combo.addItems(provinces)
+        self.destination_supply_combo.addItems(provinces)
+        
+        # Fallback invoice types
+        self.invoice_type_combo.addItems(["Sale Invoice", "Debit Note"])
+        
+        # Fallback HS codes
+        self.hs_code_combo.addItems(["9999.0000 - General/Other"])
+        
+        # Fallback UOM
+        self.uom_combo.addItems(["Numbers, pieces, units", "Kg", "Meter"])
+        
+        # Fallback rates
+        self.rate_combo.addItems(["18%", "17%", "16%", "10%", "5%", "0%"])
+        
+        # Hide loading state
+        self.show_loading_state(False)
 
     def calculate_tax(self):
         """Calculate tax based on rate and value"""
         try:
-            rate_text = self.rate_combo.currentText().replace('%', '')
-            if rate_text:
-                rate = float(rate_text)
+            rate_text = self.rate_combo.currentText()
+            if not rate_text:
+                return
+                
+            # Extract rate value from formatted text
+            parts = rate_text.split(' - ')
+            if len(parts) >= 3:
+                rate_str = parts[2].replace('%', '').strip()
+                rate = float(rate_str)
+                
                 value_excl_st = self.value_excl_st_spin.value()
                 tax_amount = (value_excl_st * rate) / 100
                 self.sales_tax_spin.setValue(tax_amount)
-        except ValueError:
+                
+        except (ValueError, IndexError):
             pass
 
     def calculate_amounts(self):
@@ -666,9 +875,12 @@ class FBRInvoiceDialog(QDialog):
     def clear_item_fields(self):
         """Clear all item input fields"""
         self.product_desc_edit.clear()
-        self.hs_code_combo.setCurrentIndex(0)
-        self.rate_combo.setCurrentText("18%")
-        self.uom_combo.setCurrentIndex(0)
+        if self.hs_code_combo.count() > 0:
+            self.hs_code_combo.setCurrentIndex(0)
+        if self.rate_combo.count() > 0:
+            self.rate_combo.setCurrentText("18%")
+        if self.uom_combo.count() > 0:
+            self.uom_combo.setCurrentIndex(0)
         self.quantity_spin.setValue(1.000)
         self.value_excl_st_spin.setValue(0.00)
         self.sales_tax_spin.setValue(0.00)
@@ -677,9 +889,8 @@ class FBRInvoiceDialog(QDialog):
         self.extra_tax_spin.setValue(0.00)
         self.further_tax_spin.setValue(0.00)
         self.total_value_pfad_spin.setValue(0.00)
-        if hasattr(self, 'sro_schedule_combo'):
+        if self.sro_schedule_combo.count() > 0:
             self.sro_schedule_combo.setCurrentIndex(0)
-        self.item_sr_spin.setValue(1)
 
     def edit_item_row(self, row):
         """Edit specific item row"""
@@ -770,8 +981,8 @@ class FBRInvoiceDialog(QDialog):
                 pass
         
         # Load other fields
-        self.invoice_type_combo.setCurrentText(self.invoice_data.get('invoiceType', 'Sale Invoice'))
-        self.invoice_ref_edit.setText(self.invoice_data.get('invoiceRefNo', ''))
+        if hasattr(self, 'invoice_type_combo') and self.invoice_type_combo.count() > 0:
+            self.invoice_type_combo.setCurrentText(self.invoice_data.get('invoiceType', 'Sale Invoice'))
         
         # Load items
         items = self.invoice_data.get('items', [])
@@ -782,10 +993,13 @@ class FBRInvoiceDialog(QDialog):
     def load_item_into_form(self, item):
         """Load item data into the form fields"""
         self.product_desc_edit.setText(item.get('productDescription', ''))
-        self.hs_code_combo.setCurrentText(item.get('hsCode', ''))
-        self.rate_combo.setCurrentText(item.get('rate', '18%'))
+        if self.hs_code_combo.count() > 0:
+            self.hs_code_combo.setCurrentText(item.get('hsCode', ''))
+        if self.rate_combo.count() > 0:
+            self.rate_combo.setCurrentText(item.get('rate', '18%'))
         self.quantity_spin.setValue(item.get('quantity', 1.0))
-        self.uom_combo.setCurrentText(item.get('uoM', ''))
+        if self.uom_combo.count() > 0:
+            self.uom_combo.setCurrentText(item.get('uoM', ''))
         self.value_excl_st_spin.setValue(item.get('valueSalesExcludingST', 0.0))
         self.sales_tax_spin.setValue(item.get('salesTaxApplicable', 0.0))
 
@@ -796,12 +1010,12 @@ class FBRInvoiceDialog(QDialog):
         for row in range(self.items_table.rowCount()):
             try:
                 item = {
-                    "hsCode": self.items_table.item(row, 8).text(),
+                    "hsCode": self.formatter.extract_hs_code_from_dropdown_text(self.items_table.item(row, 8).text()),
                     "productDescription": self.items_table.item(row, 6).text(),
                     "rate": self.items_table.item(row, 10).text(),
                     "uoM": self.items_table.item(row, 12).text(),
                     "quantity": float(self.items_table.item(row, 11).text()),
-                    "totalValues": 0.0,  # Calculate if needed
+                    "totalValues": 0.0,
                     "valueSalesExcludingST": float(self.items_table.item(row, 13).text()),
                     "fixedNotifiedValueOrRetailPrice": 0.0,
                     "salesTaxApplicable": float(self.items_table.item(row, 14).text()),
@@ -823,22 +1037,22 @@ class FBRInvoiceDialog(QDialog):
         invoice_data = {
             "invoiceType": self.invoice_type_combo.currentText(),
             "invoiceDate": self.invoice_date_edit.date().toString("yyyy-MM-dd"),
-            "sellerNTNCNIC": "",  # Will be filled from company settings
-            "sellerBusinessName": "",  # Will be filled from company settings
-            "sellerProvince": self.sale_origination_combo.currentText(),
-            "sellerAddress": "",  # Will be filled from company settings
+            "sellerNTNCNIC": self.seller_reg_no_edit.text(),
+            "sellerBusinessName": self.seller_name_edit.text(),
+            "sellerProvince": self.seller_province_combo.currentText(),
+            "sellerAddress": self.seller_address_edit.text(),
             "buyerNTNCNIC": self.buyer_reg_no_edit.text(),
             "buyerBusinessName": self.buyer_name_edit.text(),
-            "buyerProvince": self.destination_supply_combo.currentText(),
-            "buyerAddress": "",  # Could be added to form
+            "buyerProvince": self.buyer_province_combo.currentText(),
+            "buyerAddress": self.buyer_address_edit.text(),
             "buyerRegistrationType": self.buyer_type_combo.currentText(),
-            "invoiceRefNo": self.invoice_ref_edit.text(),
+            "invoiceRefNo": "",
             "items": items
         }
         
         # Add scenario ID for sandbox mode
-        if self.mode == "sandbox" and hasattr(self, 'scenario_id_combo'):
-            invoice_data["scenarioId"] = self.scenario_id_combo.currentText()
+        if self.mode == "sandbox":
+            invoice_data["scenarioId"] = "SN001"  # Default scenario ID
         
         return invoice_data
 
@@ -905,6 +1119,12 @@ class FBRInvoiceDialog(QDialog):
         
         # Accept dialog
         self.accept()
+
+    def closeEvent(self, event):
+        """Clean up when dialog is closed"""
+        if self.dropdown_manager:
+            self.dropdown_manager.cleanup_threads()
+        event.accept()
 
 
 # Test the dialog
