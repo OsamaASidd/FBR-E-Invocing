@@ -275,20 +275,58 @@ class FBRSubmissionService:
             "items": [],  # Get from invoice items table
         }
 
-    def _update_invoice_with_response(
-        self, invoice_id: int, document_type: str, response: Dict
-    ):
+    def _update_invoice_with_response(self, invoice_id: int, document_type: str, response: Dict):
         """Update invoice with FBR response"""
-        invoice = self.session.query(SalesInvoice).filter_by(id=invoice_id).first()
-        if invoice:
-            invoice.fbr_invoice_number = response.get("invoiceNumber", "")
-            invoice.fbr_datetime = datetime.now()
-            invoice.fbr_status = response.get("validationResponse", {}).get(
-                "status", ""
-            )
-            invoice.fbr_response = json.dumps(response)
+        try:
+            session = self.db.get_session()
+            invoice = session.query(SalesInvoice).filter_by(id=invoice_id).first()
+            
+            if invoice:
+                # Update invoice with FBR response data
+                invoice.fbr_invoice_number = response.get("invoiceNumber", "")
+                invoice.fbr_datetime = datetime.strptime(response.get("dated", ""), "%Y-%m-%d %H:%M:%S") if response.get("dated") else datetime.now()
+                
+                validation_response = response.get("validationResponse", {})
+                invoice.fbr_status = validation_response.get("status", "Unknown")
+                invoice.fbr_response = json.dumps(response)
+                
+                session.commit()
+                
+        except Exception as e:
+            print(f"Error updating invoice with response: {e}")
 
-            self.session.commit()
+    def _log_submission(self, invoice_id: int, document_type: str, payload: Dict, response: Dict, status: str = "Success"):
+        """Enhanced logging with detailed information"""
+        try:
+            session = self.db.get_session()
+            
+            # Determine actual status from response
+            if response and "validationResponse" in response:
+                validation_response = response["validationResponse"]
+                actual_status = validation_response.get("status", status)
+                error_details = validation_response.get("error", "")
+            else:
+                actual_status = status
+                error_details = response.get("error", "") if response else ""
+            
+            log_entry = FBRLogs(
+                document_type=document_type,
+                document_id=invoice_id,
+                fbr_invoice_number=response.get("invoiceNumber", "") if response else "",
+                status=actual_status,
+                submitted_at=datetime.now(),
+                request_payload=json.dumps(payload, indent=2) if payload else "",
+                response_data=json.dumps(response, indent=2) if response else "",
+                response_status_code="200" if actual_status == "Valid" else "400",
+                validation_errors=error_details,
+                processing_time=0.0  # You can measure actual processing time
+            )
+            
+            session.add(log_entry)
+            session.commit()
+            
+        except Exception as e:
+            print(f"Error logging submission: {e}")
 
     def _log_submission(
         self,

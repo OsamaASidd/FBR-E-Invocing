@@ -615,23 +615,29 @@ class MainWindow(QMainWindow):
             error_count = 0
             errors = []
             
+            # Initialize services
+            submission_service = FBRSubmissionService(self.db_manager)
+            queue_manager = FBRQueueManager(self.db_manager)
+            
             for i, invoice_data in enumerate(invoices):
                 try:
-                    # Here you would typically save to database first,
-                    # then submit to FBR API
-                    
-                    # For now, just simulate the process
                     self.statusBar().showMessage(f"Processing invoice {i+1} of {len(invoices)}...")
-                    
-                    # Simulate API call delay
                     self.repaint()  # Force GUI update
                     
-                    # You would implement actual FBR API submission here
-                    # For now, just log the invoice data
-                    print(f"Invoice {i+1} ({mode} mode):")
-                    print(json.dumps(invoice_data, indent=2))
+                    # 1. Save invoice to database first
+                    invoice_id = self._save_invoice_to_database(invoice_data)
                     
-                    success_count += 1
+                    # 2. Add to FBR queue
+                    queue_manager.add_to_queue("Sales Invoice", invoice_id, priority=1)
+                    
+                    # 3. Submit to FBR (real API call)
+                    result = submission_service.submit_invoice(invoice_id, "Sales Invoice")
+                    
+                    if result["success"]:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        errors.append(f"Invoice {i+1}: {result.get('error', 'Unknown error')}")
                     
                 except Exception as e:
                     error_count += 1
@@ -655,15 +661,35 @@ class MainWindow(QMainWindow):
             # Refresh tables
             self.refresh_invoices_table()
             self.refresh_queue_table()
+            self.refresh_logs_table()
             
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Processing Error",
-                f"Error processing uploaded invoices: {str(e)}"
-            )
+            QMessageBox.critical(self, "Processing Error", f"Error processing uploaded invoices: {str(e)}")
         finally:
             self.statusBar().showMessage("Ready")
+
+
+    def _save_invoice_to_database(self, invoice_data):
+        """Save invoice data to database and return invoice ID"""
+        session = self.db_manager.get_session()
+        
+        # Create invoice record
+        invoice = SalesInvoice(
+            invoice_number=f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}-{hash(str(invoice_data)) % 1000:03d}",
+            posting_date=datetime.strptime(invoice_data['invoiceDate'], '%Y-%m-%d'),
+            total_amount=sum(item['valueSalesExcludingST'] for item in invoice_data['items']),
+            tax_amount=sum(item['salesTaxApplicable'] for item in invoice_data['items']),
+            grand_total=sum(item['valueSalesExcludingST'] + item['salesTaxApplicable'] for item in invoice_data['items']),
+            province=invoice_data.get('buyerProvince', ''),
+            submit_to_fbr=True,
+            created_at=datetime.now()
+        )
+        
+        session.add(invoice)
+        session.commit()
+        
+        return invoice.id
+
 
     def create_queue_tab(self):
         """Create the queue management tab"""

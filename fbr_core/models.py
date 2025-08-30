@@ -16,13 +16,12 @@ from datetime import datetime
 Base = declarative_base()
 
 
-class Company(Base):
-    __tablename__ = "companies"
+class Buyer(Base):
+    __tablename__ = "buyers"
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
-    tax_id = Column(String(100))
-    province = Column(String(100))
+    ntn_cnic = Column(String(100))
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -32,8 +31,7 @@ class Customer(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
-    tax_id = Column(String(100))
-    province = Column(String(100))
+    ntn_cnic = Column(String(100))
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -105,6 +103,8 @@ class FBRQueue(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_retry_at = Column(DateTime)
     completed_at = Column(DateTime)
+    # validation_errors = Column(Text)
+    # processing_time = Column(Float)
 
 
 class FBRLogs(Base):
