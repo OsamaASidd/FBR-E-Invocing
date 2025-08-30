@@ -3,7 +3,7 @@ import json
 import requests
 from datetime import datetime
 from typing import Dict, List
-from .models import DatabaseManager, SalesInvoice, FBRQueue, FBRLogs, FBRSettings
+from .models import DatabaseManager, Invoices, FBRQueue, FBRLogs, FBRSettings
 
 
 class FBRPayloadBuilder:
@@ -259,7 +259,7 @@ class FBRSubmissionService:
         """Get invoice data from database"""
         # This is a simplified version - you'll need to implement
         # proper joins to get all related data
-        invoice = self.session.query(SalesInvoice).filter_by(id=invoice_id).first()
+        invoice = self.session.query(Invoices).filter_by(id=invoice_id).first()
 
         if not invoice:
             raise Exception(f"Invoice {invoice_id} not found")
@@ -279,7 +279,7 @@ class FBRSubmissionService:
         """Update invoice with FBR response"""
         try:
             session = self.db.get_session()
-            invoice = session.query(SalesInvoice).filter_by(id=invoice_id).first()
+            invoice = session.query(Invoices).filter_by(id=invoice_id).first()
             
             if invoice:
                 # Update invoice with FBR response data

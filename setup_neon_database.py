@@ -144,16 +144,7 @@ def setup_database():
         # Commit all changes
         session.commit()
         print("✅ Database setup completed successfully!")
-        
-        # Display summary
-        print("\n📊 Database Summary:")
-        print(f"   • Companies: {session.query(Company).count()}")
-        print(f"   • Customers: {session.query(Customer).count()}")
-        print(f"   • Items: {session.query(Item).count()}")
-        print(f"   • Invoices: {session.query(SalesInvoice).count()}")
-        print(f"   • Queue Items: {session.query(FBRQueue).count()}")
-        print(f"   • Logs: {session.query(FBRLogs).count()}")
-        
+                
         session.close()
         
     except Exception as e:

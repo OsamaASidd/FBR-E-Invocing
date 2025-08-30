@@ -32,7 +32,7 @@ from PyQt6.QtGui import QFont
 
 # Import the new FBR Invoice Dialog
 from gui.dialogs.invoice_dialog import FBRInvoiceDialog
-from fbr_core.models import DatabaseManager, SalesInvoice, FBRQueue, FBRLogs
+from fbr_core.models import DatabaseManager, Invoices, FBRQueue, FBRLogs
 from fbr_core.fbr_service import FBRSubmissionService, FBRQueueManager
 
 
@@ -607,7 +607,7 @@ class MainWindow(QMainWindow):
         session = self.db_manager.get_session()
         
         # Create invoice record
-        invoice = SalesInvoice(
+        invoice = Invoices(
             invoice_number=f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}-{hash(str(invoice_data)) % 1000:03d}",
             posting_date=datetime.strptime(invoice_data['invoiceDate'], '%Y-%m-%d'),
             total_amount=sum(item['valueSalesExcludingST'] for item in invoice_data['items']),
@@ -867,7 +867,7 @@ class MainWindow(QMainWindow):
                 
                 # Get invoice data from database
                 session = self.db_manager.get_session()
-                invoice = session.query(SalesInvoice).filter_by(id=invoice_id).first()
+                invoice = session.query(Invoices).filter_by(id=invoice_id).first()
                 
                 if not invoice:
                     QMessageBox.warning(self, "Error", "Invoice not found!")
@@ -1009,8 +1009,8 @@ class MainWindow(QMainWindow):
 
         session = self.db_manager.get_session()
         invoices = (
-            session.query(SalesInvoice)
-            .order_by(SalesInvoice.created_at.desc())
+            session.query(Invoices)
+            .order_by(Invoices.created_at.desc())
             .limit(100)
             .all()
         )

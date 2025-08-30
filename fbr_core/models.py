@@ -19,9 +19,8 @@ Base = declarative_base()
 class Buyer(Base):
     __tablename__ = "buyers"
 
-    id = Column(Integer, primary_key=True)
+    ntn_cnic = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
-    ntn_cnic = Column(String(100))
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -29,12 +28,10 @@ class Buyer(Base):
 class Customer(Base):
     __tablename__ = "customers"
 
-    id = Column(Integer, primary_key=True)
+    ntn_cnic = Column(String(100), primary_key=True)  
     name = Column(String(255), nullable=False)
-    ntn_cnic = Column(String(100))
     address = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-
 
 class Item(Base):
     __tablename__ = "items"
@@ -48,7 +45,7 @@ class Item(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class SalesInvoice(Base):
+class Invoices(Base):
     __tablename__ = "sales_invoices"
 
     id = Column(Integer, primary_key=True)

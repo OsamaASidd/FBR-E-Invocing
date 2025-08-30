@@ -464,71 +464,109 @@ class FBRInvoiceDialog(QDialog):
         
         parent_layout.addWidget(list_group)
 
+
+
     def populate_dropdowns(self):
-        """Populate all dropdown menus with appropriate values"""
+        # """Populate all dropdown menus from database"""
+        # if not hasattr(self.parent(), 'db_manager') or not self.parent().db_manager:
+        #     self._populate_default_dropdowns()
+        #     return
+            
+        # session = self.parent().db_manager.get_session()
         
-        # Buyer Type
-        self.buyer_type_combo.addItems([
-            "Unregistered", "Registered"
-        ])
+        # try:
+        #     # # Provinces
+        #     # provinces = session.query(Province).all()
+        #     # province_names = [p.name for p in provinces]
+        #     # if province_names:
+        #     #     self.seller_province_combo.addItems(province_names)
+        #     #     self.buyer_province_combo.addItems(province_names)
+        #     #     self.sale_origination_combo.addItems(province_names)
+        #     #     self.destination_supply_combo.addItems(province_names)
+            
+        #     # Sale Types with tax rates
+        #     sale_types = session.query(SaleType).all()
+        #     sale_type_names = [s.name for s in sale_types]
+        #     if sale_type_names:
+        #         self.sale_type_combo.addItems(sale_type_names)
+        #         # Store tax rates for lookup
+        #         self.sale_type_tax_rates = {s.name: s.tax_rate for s in sale_types}
+            
+        #     # HS Codes
+        #     hs_codes = session.query(HSCode).all()
+        #     hs_code_items = [f"{h.code} - {h.description}" for h in hs_codes]
+        #     if hs_code_items:
+        #         self.hs_code_combo.addItems(hs_code_items)
+            
+        #     # UOM Types
+        #     uom_types = session.query(UOMType).all()
+        #     uom_names = [u.name for u in uom_types]
+        #     if uom_names:
+        #         self.uom_combo.addItems(uom_names)
+            
+        #     # Tax rates from sale types
+        #     tax_rates = [f"{s.tax_rate}%" for s in sale_types]
+        #     if tax_rates:
+        #         self.rate_combo.addItems(list(set(tax_rates)))  # Remove duplicates
+            
+        # except Exception as e:
+        #     print(f"Error loading dropdown data: {e}")
+        #     self._populate_default_dropdowns()
+
+    def _populate_default_dropdowns(self):
+        """Fallback method with default values"""
+        # Your existing hardcoded dropdown population code here
+        pass
+
+    # Add these methods for creating new records
+    def create_new_customer(self):
+        """Create new customer dialog"""
+        ntn_cnic = self.buyer_reg_no_edit.text().strip()
+        name = self.buyer_name_edit.text().strip()
         
-        # Invoice Type
-        self.invoice_type_combo.addItems([
-            "Sale Invoice", "Debit Note"
-        ])
+        if not ntn_cnic or not name:
+            QMessageBox.warning(self, "Error", "NTN/CNIC and Name are required")
+            return
         
-        # Provinces (for both origination and destination)
-        provinces = [
-            "Punjab", "Sindh", "Khyber Pakhtunkhwa", "Balochistan",
-            "Gilgit-Baltistan", "Azad Kashmir", "Islamabad Capital Territory"
-        ]
-        self.sale_origination_combo.addItems(provinces)
-        self.destination_supply_combo.addItems(provinces)
+        session = self.parent().db_manager.get_session()
         
-        # Sale Type
-        self.sale_type_combo.addItems([
-            "Goods at standard rate (default)", "Goods at reduced rate",
-            "Goods at zero rate", "Exempt goods", "Services at standard rate",
-            "Services at reduced rate", "Services at zero rate", "Exempt services"
-        ])
+        try:
+            customer = Customer(
+                ntn_cnic=ntn_cnic,
+                name=name,
+                address=self.buyer_address_edit.text().strip(),
+                province=self.buyer_province_combo.currentText()
+            )
+            session.add(customer)
+            session.commit()
+            QMessageBox.information(self, "Success", "Customer created successfully")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create customer: {str(e)}")
+
+    def create_new_buyer(self):
+        """Create new buyer dialog"""  
+        ntn_cnic = self.seller_reg_no_edit.text().strip()
+        name = self.seller_name_edit.text().strip()
         
-        # HS Codes (sample data)
-        hs_codes = [
-            "0101.2100 - Live horses, asses, mules and hinnies",
-            "1001.1100 - Durum wheat",
-            "1001.1900 - Other wheat",
-            "8471.3000 - Portable automatic data processing machines",
-            "8471.4100 - Comprising in the same housing CPU and I/O unit",
-            "9999.0000 - General/Other items"
-        ]
-        self.hs_code_combo.addItems(hs_codes)
+        if not ntn_cnic or not name:
+            QMessageBox.warning(self, "Error", "NTN/CNIC and Name are required")
+            return
         
-        # Tax Rates
-        tax_rates = ["0%", "5%", "12%", "17%", "18%", "20%", "25%"]
-        self.rate_combo.addItems(tax_rates)
-        self.rate_combo.setCurrentText("18%")  # Default
+        session = self.parent().db_manager.get_session()
         
-        # Units of Measurement
-        uom_options = [
-            "Numbers, pieces, units", "Kg", "Grams", "Liters", "Meters",
-            "Square meters", "Cubic meters", "Tons", "Hours", "Days",
-            "Dozens", "Pairs", "Sets", "Boxes", "Cartons"
-        ]
-        self.uom_combo.addItems(uom_options)
-        
-        # SRO/Schedule Numbers (sample)
-        if hasattr(self, 'sro_schedule_combo'):
-            sro_options = ["", "SRO 1125(I)/2011", "SRO 565(I)/2006", "SRO 1083(I)/2012"]
-            self.sro_schedule_combo.addItems(sro_options)
-        
-        # Scenario IDs for sandbox mode
-        if self.mode == "sandbox" and hasattr(self, 'scenario_id_combo'):
-            scenario_ids = [
-                "SN001", "SN002", "SN003", "SN004", "SN005",
-                "SN006", "SN007", "SN008", "SN009", "SN010"
-            ]
-            self.scenario_id_combo.addItems(scenario_ids)
-            self.scenario_id_combo.setCurrentText("SN001")
+        try:
+            buyer = Buyer(
+                ntn_cnic=ntn_cnic,
+                name=name,
+                address=self.seller_address_edit.text().strip(),
+                province=self.seller_province_combo.currentText()
+            )
+            session.add(buyer)
+            session.commit()
+            QMessageBox.information(self, "Success", "Buyer created successfully")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create buyer: {str(e)}")
+
 
     def calculate_tax(self):
         """Calculate tax based on rate and value"""
