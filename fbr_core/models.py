@@ -22,11 +22,12 @@ class Buyer(Base):
     ntn_cnic = Column(String(100), primary_key=True)
     name = Column(String(255), nullable=False)
     address = Column(Text)
+    company_id = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class Customer(Base):
-    __tablename__ = "customers"
+class Company(Base):
+    __tablename__ = "Company"
 
     ntn_cnic = Column(String(100), primary_key=True)  
     name = Column(String(255), nullable=False)
@@ -37,11 +38,10 @@ class Item(Base):
     __tablename__ = "items"
 
     id = Column(Integer, primary_key=True)
-    code = Column(String(100), unique=True, nullable=False)
     name = Column(String(255), nullable=False)
     hs_code = Column(String(50))
     uom = Column(String(50))
-    rate = Column(Float)
+    company_id = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -49,9 +49,9 @@ class Invoices(Base):
     __tablename__ = "sales_invoices"
 
     id = Column(Integer, primary_key=True)
-    invoice_number = Column(String(100), unique=True, nullable=False)
-    customer_id = Column(Integer)
-    company_id = Column(Integer)
+    invoice_number = Column(String(100), unique=True, nullable=True)
+    customer_id = Column(String(100))
+    company_id = Column(String(100))
     posting_date = Column(DateTime)
     due_date = Column(DateTime)
     total_amount = Column(Float)
@@ -75,14 +75,20 @@ class SalesInvoiceItem(Base):
 
     id = Column(Integer, primary_key=True)
     invoice_id = Column(Integer)
-    item_id = Column(Integer)
+    item_id = Column(Integer) # used to fetch the description, hs_code & UOM
     quantity = Column(Float)
     rate = Column(Float)
-    amount = Column(Float)
+    total_value = Column(Float)
     tax_rate = Column(Float)
     tax_amount = Column(Float)
-    hs_code = Column(String(50))
-    description = Column(Text)
+    extra_tax = Column(Float ,default=0)
+    further_tax = Column(Float ,default=0)
+    sales_tax_withheld_at_source = Column(Float ,default=0)
+    sro_schedule_no = Column(String(100))
+    fed_payable = Column(Float ,default=0)
+    discount = Column(Float ,default=0)
+    transaction_type = Column(String(100))
+    sro_item_serial_no = Column(String(100))
 
 
 class FBRQueue(Base):
@@ -91,6 +97,7 @@ class FBRQueue(Base):
     id = Column(Integer, primary_key=True)
     document_type = Column(String(50))  # Sales Invoice, POS Invoice
     document_id = Column(Integer)
+    company_id = Column(String(100), nullable=False)
     status = Column(String(50))  # Pending, Processing, Completed, Failed
     priority = Column(Integer, default=5)
     retry_count = Column(Integer, default=0)
@@ -100,8 +107,6 @@ class FBRQueue(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     last_retry_at = Column(DateTime)
     completed_at = Column(DateTime)
-    # validation_errors = Column(Text)
-    # processing_time = Column(Float)
 
 
 class FBRLogs(Base):
@@ -110,6 +115,7 @@ class FBRLogs(Base):
     id = Column(Integer, primary_key=True)
     document_type = Column(String(50))
     document_id = Column(Integer)
+    company_id = Column(String(100), nullable=False)
     fbr_invoice_number = Column(String(255))
     status = Column(String(50))  # Success, Invalid, Error, Timeout
     submitted_at = Column(DateTime, default=datetime.utcnow)
@@ -124,10 +130,9 @@ class FBRSettings(Base):
     __tablename__ = "fbr_settings"
 
     id = Column(Integer, primary_key=True)
+    company_id = Column(String(100), nullable=False)
     api_endpoint = Column(String(500))
     pral_authorization_token = Column(String(500))
-    pral_login_id = Column(String(100))
-    pral_login_password = Column(String(100))
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
