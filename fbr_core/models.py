@@ -56,6 +56,7 @@ class Invoices(Base):
     due_date = Column(DateTime)
     total_amount = Column(Float)
     tax_amount = Column(Float)
+    transaction_type = Column(String(100))
     grand_total = Column(Float)
 
     # FBR specific fields
