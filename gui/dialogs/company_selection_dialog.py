@@ -331,16 +331,35 @@ class AddCompanyDialog(QDialog):
         name = self.name_edit.text().strip()
         ntn = self.ntn_edit.text().strip()
         address = self.address_edit.toPlainText().strip()
+        province = self.province_combo.currentText().strip()
         
         # Validation
         if not name:
             QMessageBox.warning(self, "Validation Error", "Company name is required!")
+            self.name_edit.setFocus()
             return
             
         if not ntn:
             QMessageBox.warning(self, "Validation Error", "NTN/CNIC is required!")
+            self.ntn_edit.setFocus()
+            return
+        
+        # Validate NTN format (should be 13 digits)
+        if not ntn.isdigit() or len(ntn) != 13:
+            QMessageBox.warning(self, "Validation Error", "NTN/CNIC must be exactly 13 digits!")
+            self.ntn_edit.setFocus()
             return
             
+        if not address:
+            QMessageBox.warning(self, "Validation Error", "Address is required!")
+            self.address_edit.setFocus()
+            return
+        
+        if not province:
+            QMessageBox.warning(self, "Validation Error", "Province is required!")
+            self.province_combo.setFocus()
+            return
+
         try:
             session = self.db_manager.get_session()
             
@@ -349,41 +368,57 @@ class AddCompanyDialog(QDialog):
             if existing:
                 QMessageBox.warning(self, "Validation Error", 
                                   "A company with this NTN/CNIC already exists!")
+                self.ntn_edit.setFocus()
                 return
             
-            # Create new company
+            # Create new company with all fields
             new_company = Company(
                 ntn_cnic=ntn,
                 name=name,
-                address=address or None
+                address=address,
+                province=province,
+                is_active=True
             )
             
             session.add(new_company)
+            
+            # Create default FBR settings for the company
+            from fbr_core.models import FBRSettings
+            fbr_settings = FBRSettings(
+                company_id=ntn,
+                api_endpoint="https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb",
+                validation_endpoint="https://gw.fbr.gov.pk/di_data/v1/di/validateinvoicedata_sb",
+                pral_authorization_token="",
+                timeout_seconds=30,
+                max_retries=3,
+                default_mode="sandbox",
+                auto_validate_before_submit=True,
+                auto_queue_on_failure=False,
+                bulk_submission_enabled=False,
+                is_active=True
+            )
+            session.add(fbr_settings)
             session.commit()
             
             QMessageBox.information(self, "Success", 
-                                  "Company added successfully!")
+                                  f"Company '{name}' added successfully!\n\n"
+                                  "Default FBR settings have been created. "
+                                  "Make sure to update them in the Settings tab after selecting this company.")
             self.accept()
             
         except Exception as e:
+            session.rollback()
             QMessageBox.critical(self, "Database Error", 
                                f"Failed to save company: {str(e)}")
-
-
-# Test the dialog
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
     
-    # Mock database manager for testing
-    class MockDBManager:
-        def get_session(self):
-            # Return mock session
-            return None
-    
-    dialog = CompanySelectionDialog(MockDBManager())
-    dialog.company_selected.connect(lambda data: print("Selected company:", data))
-    
-    result = dialog.exec()
-    print("Dialog result:", result)
-    
-    sys.exit(app.exec())
+    def __init__(self, db_manager, parent=None):
+        super().__init__(parent)
+        self.db_manager = db_manager
+        
+        self.setWindowTitle("Add New Company")
+        self.setModal(True)
+        self.setFixedSize(500, 600)
+        
+        self.setStyleSheet(parent.styleSheet() if parent else "")
+        
+        self.setup_ui()

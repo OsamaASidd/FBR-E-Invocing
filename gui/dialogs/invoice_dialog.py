@@ -1090,7 +1090,7 @@ class FBRInvoiceDialog(QDialog):
         return errors
 
     def save_invoice(self):
-        """Save the invoice"""
+        """Save the invoice to database"""
         # Validate form
         errors = self.validate_form()
         if errors:
@@ -1100,84 +1100,188 @@ class FBRInvoiceDialog(QDialog):
             )
             return
         
-        # Get invoice data
-        invoice_data = self.get_invoice_data()
-        
-        # Add company ID
-        if self.company_data:
-            invoice_data['company_id'] = self.company_data['ntn_cnic']
-        
-        # Emit signal with invoice data
-        self.invoice_saved.emit(invoice_data)
-        
-        # Show success message
-        QMessageBox.information(
-            self, "Success",
-            f"Invoice saved successfully!\n"
-            f"Mode: {self.mode.title()}\n"
-            f"Items: {len(invoice_data['items'])}\n"
-            f"Company: {self.company_data['name'] if self.company_data else 'Unknown'}"
-        )
-        
-        # Accept dialog
-        self.accept()
-
-    def load_invoice_data(self):
-        """Load existing invoice data into the form"""
-        if not self.invoice_data:
-            return
+        try:
+            session = self.db_manager.get_session()
             
-        # Load basic information
-        self.buyer_name_edit.setText(self.invoice_data.get('buyerBusinessName', ''))
-        self.buyer_reg_no_edit.setText(self.invoice_data.get('buyerNTNCNIC', ''))
-        
-        # Load dates
-        if 'invoiceDate' in self.invoice_data:
-            try:
-                date_obj = datetime.strptime(self.invoice_data['invoiceDate'], '%Y-%m-%d').date()
-                self.invoice_date_edit.setDate(QDate(date_obj))
-            except:
-                pass
-        
-        # Load other fields
-        if self.invoice_type_combo.count() > 0:
-            self.invoice_type_combo.setCurrentText(self.invoice_data.get('invoiceType', 'Sale Invoice'))
-        
-        # Load items would require more complex logic to match with company items
-
-    def closeEvent(self, event):
-        """Clean up when dialog is closed"""
-        if self.dropdown_manager:
-            self.dropdown_manager.cleanup_threads()
-        event.accept()
-
-
-# Test the dialog
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    
-    # Test company data
-    company_data = {
-        'ntn_cnic': '1234567890123',
-        'name': 'Test Company Ltd',
-        'address': 'Test Address, Karachi'
-    }
-    
-    seller_data = {
-        'sellerNTNCNIC': '1234567890123',
-        'sellerBusinessName': 'Test Company Ltd',
-        'sellerAddress': 'Test Address, Karachi',
-        'sellerProvince': 'Sindh'
-    }
-    
-    dialog = CompanySpecificInvoiceDialog(
-        mode="sandbox", 
-        company_data=company_data, 
-        seller_data=seller_data
-    )
-    dialog.invoice_saved.connect(lambda data: print("Invoice saved:", data))
-    
-    result = dialog.exec()
-    print("Dialog result:", result)
-    
-    sys.exit(app.exec())
+            # Get or create buyer
+            buyer_ntn = self.buyer_reg_no_edit.text().strip()
+            buyer_name = self.buyer_name_edit.text().strip()
+            buyer_address = self.buyer_address_edit.text().strip()
+            buyer_province = self.buyer_province_combo.currentText().strip()
+            buyer_type = self.buyer_type_combo.currentText().strip()
+            
+            # Check if buyer exists
+            from fbr_core.models import Buyer
+            buyer = session.query(Buyer).filter_by(
+                company_id=self.company_data['ntn_cnic'],
+                ntn_cnic=buyer_ntn
+            ).first()
+            
+            if not buyer:
+                # Create new buyer
+                buyer = Buyer(
+                    company_id=self.company_data['ntn_cnic'],
+                    ntn_cnic=buyer_ntn,
+                    name=buyer_name,
+                    address=buyer_address or None,
+                    province=buyer_province or None,
+                    buyer_type=buyer_type
+                )
+                session.add(buyer)
+                session.flush()  # Get buyer ID
+            
+            # Generate invoice number if not provided
+            invoice_number = self.invoice_no_edit.text().strip()
+            if not invoice_number:
+                # Generate invoice number based on company and date
+                from datetime import datetime
+                now = datetime.now()
+                company_code = self.company_data['ntn_cnic'][-4:]  # Last 4 digits
+                invoice_number = f"INV-{company_code}-{now.strftime('%Y%m%d')}-{now.strftime('%H%M%S')}"
+            
+            # Create invoice
+            from fbr_core.models import Invoices
+            invoice = Invoices(
+                company_id=self.company_data['ntn_cnic'],
+                buyer_id=buyer.id,
+                invoice_number=invoice_number,
+                invoice_type=self.invoice_type_combo.currentText(),
+                posting_date=self.invoice_date_edit.date().toPython(),
+                
+                # Buyer details (denormalized for FBR submission)
+                buyer_ntn_cnic=buyer_ntn,
+                buyer_name=buyer_name,
+                buyer_address=buyer_address,
+                buyer_province=buyer_province,
+                buyer_type=buyer_type,
+                
+                # Transaction details
+                transaction_type=self.transaction_type_combo.currentText(),
+                sale_origination_province=self.sale_origination_combo.currentText(),
+                destination_supply_province=self.destination_supply_combo.currentText(),
+                
+                # Status
+                status="Draft",
+                fbr_status=None,
+                submit_to_fbr=True
+            )
+            
+            session.add(invoice)
+            session.flush()  # Get invoice ID
+            
+            # Add invoice items
+            total_amount = 0
+            total_tax = 0
+            total_extra_tax = 0
+            total_further_tax = 0
+            total_discount = 0
+            
+            from fbr_core.models import SalesInvoiceItem
+            for row in range(self.items_table.rowCount()):
+                try:
+                    item_name = self.items_table.item(row, 1).text()
+                    hs_code = self.items_table.item(row, 2).text()
+                    uom = self.items_table.item(row, 3).text()
+                    sale_type = self.items_table.item(row, 4).text()
+                    rate_text = self.items_table.item(row, 5).text()
+                    quantity = float(self.items_table.item(row, 6).text())
+                    value_excl_st = float(self.items_table.item(row, 7).text())
+                    sales_tax = float(self.items_table.item(row, 8).text())
+                    extra_tax = float(self.items_table.item(row, 9).text())
+                    st_withheld = float(self.items_table.item(row, 10).text())
+                    further_tax = float(self.items_table.item(row, 11).text())
+                    discount = float(self.items_table.item(row, 12).text())
+                    
+                    # Extract tax rate from rate text
+                    tax_rate = 0.0
+                    if '%' in rate_text:
+                        try:
+                            # Handle different rate formats
+                            if ' - ' in rate_text:
+                                parts = rate_text.split(' - ')
+                                for part in parts:
+                                    if '%' in part:
+                                        tax_rate = float(part.replace('%', '').strip())
+                                        break
+                            else:
+                                tax_rate = float(rate_text.replace('%', '').strip())
+                        except ValueError:
+                            pass
+                    
+                    # Calculate total value for this item
+                    item_total = value_excl_st + sales_tax + extra_tax + further_tax - discount
+                    
+                    invoice_item = SalesInvoiceItem(
+                        invoice_id=invoice.id,
+                        item_name=item_name,
+                        hs_code=hs_code,
+                        uom=uom,
+                        quantity=quantity,
+                        unit_price=value_excl_st / quantity if quantity > 0 else 0,
+                        total_value=item_total,
+                        tax_rate=tax_rate,
+                        tax_amount=sales_tax,
+                        extra_tax=extra_tax,
+                        further_tax=further_tax,
+                        sales_tax_withheld_at_source=st_withheld,
+                        discount=discount,
+                        sale_type=sale_type
+                    )
+                    
+                    session.add(invoice_item)
+                    
+                    # Update totals
+                    total_amount += value_excl_st
+                    total_tax += sales_tax
+                    total_extra_tax += extra_tax
+                    total_further_tax += further_tax
+                    total_discount += discount
+                    
+                except (ValueError, AttributeError) as e:
+                    print(f"Error processing item row {row}: {e}")
+                    continue
+            
+            # Update invoice totals
+            invoice.subtotal_amount = total_amount
+            invoice.total_tax_amount = total_tax
+            invoice.total_extra_tax = total_extra_tax
+            invoice.total_further_tax = total_further_tax
+            invoice.total_discount = total_discount
+            invoice.grand_total = total_amount + total_tax + total_extra_tax + total_further_tax - total_discount
+            
+            session.commit()
+            
+            # Emit signal with invoice data
+            invoice_data = {
+                'id': invoice.id,
+                'invoice_number': invoice_number,
+                'company_id': self.company_data['ntn_cnic'],
+                'buyer_name': buyer_name,
+                'total_amount': invoice.grand_total,
+                'status': 'Draft',
+                'mode': self.mode
+            }
+            self.invoice_saved.emit(invoice_data)
+            
+            # Show success message
+            QMessageBox.information(
+                self, "Success",
+                f"Invoice saved successfully!\n\n"
+                f"Invoice Number: {invoice_number}\n"
+                f"Total Amount: PKR {invoice.grand_total:,.2f}\n"
+                f"Items: {self.items_table.rowCount()}\n"
+                f"Mode: {self.mode.title()}"
+            )
+            
+            # Accept dialog
+            self.accept()
+            
+        except Exception as e:
+            if 'session' in locals():
+                session.rollback()
+            QMessageBox.critical(
+                self, "Save Error",
+                f"Failed to save invoice: {str(e)}\n\n"
+                "Please check your data and try again."
+            )
+            print(f"Invoice save error: {e}")  # For debugging

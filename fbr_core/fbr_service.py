@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import and_
 from .models import (
     DatabaseManager, Invoices, SalesInvoiceItem, FBRQueue, FBRLogs, 
-    FBRSettings, Company, Buyer, Item, AuditLog
+    FBRSettings, Company, Buyer, Item
 )
 
 
