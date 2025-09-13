@@ -19,28 +19,21 @@ Base = declarative_base()
 
 
 class Company(Base):
-    """Company/Organization table - Primary entity"""
     __tablename__ = "companies"
 
     ntn_cnic = Column(String(100), primary_key=True)  # NTN/CNIC as primary key
     name = Column(String(255), nullable=False)
-    address = Column(Text)
-    phone = Column(String(50))
-    email = Column(String(100))
-    contact_person = Column(String(255))
+    address = Column(Text , nullable=False)
+    province = Column(String(100), nullable=False)
     province = Column(String(100))
-    city = Column(String(100))
-    postal_code = Column(String(20))
-    business_type = Column(String(100))
-    registration_date = Column(DateTime)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    invoices = relationship("Invoices", back_populates="company")
-    items = relationship("Item", back_populates="company")
-    buyers = relationship("Buyer", back_populates="company")
+    # invoices = relationship("Invoices", back_populates="company")
+    # items = relationship("Item", back_populates="company")
+    # buyers = relationship("Buyer", back_populates="company")
     fbr_settings = relationship("FBRSettings", back_populates="company")
     fbr_queue = relationship("FBRQueue", back_populates="company")
     fbr_logs = relationship("FBRLogs", back_populates="company")
@@ -54,22 +47,15 @@ class Buyer(Base):
     ntn_cnic = Column(String(100), nullable=False)  # Buyer's NTN/CNIC
     name = Column(String(255), nullable=False)
     address = Column(Text)
-    phone = Column(String(50))
-    email = Column(String(100))
     province = Column(String(100))
-    city = Column(String(100))
     buyer_type = Column(String(50), default="Registered")  # Registered/Unregistered
     
     # Company relationship
     company_id = Column(String(100), ForeignKey('companies.ntn_cnic'), nullable=False)
-    company = relationship("Company", back_populates="buyers")
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    invoices = relationship("Invoices", back_populates="buyer")
 
     # Indexes
     __table_args__ = (
@@ -83,26 +69,16 @@ class Item(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String(255), nullable=False)
-    description = Column(Text)
     hs_code = Column(String(50), nullable=False)
     uom = Column(String(50), nullable=False)  # Unit of Measurement
-    category = Column(String(100))
-    
-    # Pricing information
-    standard_rate = Column(Float)  # Default selling rate
-    cost_price = Column(Float)
-    tax_rate = Column(Float, default=18.0)  # Default tax rate
-    
+    description = Column(Text)
+        
     # Company relationship
     company_id = Column(String(100), ForeignKey('companies.ntn_cnic'), nullable=False)
-    company = relationship("Company", back_populates="items")
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    invoice_items = relationship("SalesInvoiceItem", back_populates="item")
 
     # Indexes
     __table_args__ = (
@@ -126,13 +102,6 @@ class Invoices(Base):
     invoice_type = Column(String(50), default="Sale Invoice")
     posting_date = Column(DateTime, nullable=False)
     due_date = Column(DateTime)
-    
-    # Buyer details (denormalized for FBR submission)
-    buyer_ntn_cnic = Column(String(100))
-    buyer_name = Column(String(255))
-    buyer_address = Column(Text)
-    buyer_province = Column(String(100))
-    buyer_type = Column(String(50), default="Registered")
     
     # Transaction details
     transaction_type = Column(String(100))
@@ -160,11 +129,6 @@ class Invoices(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    company = relationship("Company", back_populates="invoices")
-    buyer = relationship("Buyer", back_populates="invoices")
-    items = relationship("SalesInvoiceItem", back_populates="invoice", cascade="all, delete-orphan")
 
     # Indexes
     __table_args__ = (
@@ -210,10 +174,6 @@ class SalesInvoiceItem(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
-    invoice = relationship("Invoices", back_populates="items")
-    item = relationship("Item", back_populates="invoice_items")
-
     # Indexes
     __table_args__ = (
         Index('ix_invoice_items_invoice', 'invoice_id'),
@@ -235,8 +195,8 @@ class FBRQueue(Base):
     document_id = Column(Integer, nullable=False)
     
     # Queue management
-    status = Column(String(50), default="Pending")  # Pending, Processing, Completed, Failed
-    priority = Column(Integer, default=5)  # 1-10, lower number = higher priority
+    status = Column(String(50), default="Pending") 
+    priority = Column(Integer, default=5)
     
     # Retry management
     retry_count = Column(Integer, default=0)
@@ -251,9 +211,6 @@ class FBRQueue(Base):
     last_retry_at = Column(DateTime)
     completed_at = Column(DateTime)
     next_retry_at = Column(DateTime)  # For scheduled retries
-
-    # Relationships
-    company = relationship("Company", back_populates="fbr_queue")
 
     # Indexes
     __table_args__ = (
@@ -304,8 +261,6 @@ class FBRLogs(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    # Relationships
-    company = relationship("Company", back_populates="fbr_logs")
 
     # Indexes
     __table_args__ = (
@@ -328,89 +283,22 @@ class FBRSettings(Base):
     api_endpoint = Column(String(500))
     validation_endpoint = Column(String(500))
     pral_authorization_token = Column(String(500))
-    pral_login_id = Column(String(200))
-    pral_login_password = Column(String(200))
-    
-    # API Settings
-    timeout_seconds = Column(Integer, default=30)
-    max_retries = Column(Integer, default=3)
-    retry_delay_seconds = Column(Integer, default=5)
-    
-    # Mode Configuration
-    default_mode = Column(String(20), default="sandbox")  # sandbox, production
-    sandbox_scenario_id = Column(String(50), default="SN001")
-    
+
     # Validation Settings
     auto_validate_before_submit = Column(Boolean, default=True)
     auto_queue_on_failure = Column(Boolean, default=True)
-    
-    # Notification Settings
-    email_notifications = Column(Boolean, default=False)
-    notification_email = Column(String(200))
-    
+   
     # Advanced Settings
     bulk_submission_enabled = Column(Boolean, default=True)
-    max_bulk_size = Column(Integer, default=50)
-    parallel_processing = Column(Boolean, default=False)
     
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    company = relationship("Company", back_populates="fbr_settings")
-
     # Indexes
     __table_args__ = (
         Index('ix_fbr_settings_company', 'company_id'),
     )
-
-
-class SystemSettings(Base):
-    """System-wide settings"""
-    __tablename__ = "system_settings"
-
-    id = Column(Integer, primary_key=True)
-    key = Column(String(100), unique=True, nullable=False)
-    value = Column(Text)
-    description = Column(Text)
-    category = Column(String(50), default="general")
-    data_type = Column(String(20), default="string")  # string, integer, boolean, json
-    is_encrypted = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-
-class AuditLog(Base):
-    """Audit log for tracking changes"""
-    __tablename__ = "audit_logs"
-
-    id = Column(Integer, primary_key=True)
-    company_id = Column(String(100), ForeignKey('companies.ntn_cnic'), nullable=True)
-    
-    # Action details
-    action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, SUBMIT
-    table_name = Column(String(100), nullable=False)
-    record_id = Column(String(100), nullable=False)
-    
-    # Change details
-    old_values = Column(Text)  # JSON
-    new_values = Column(Text)  # JSON
-    
-    # User context (if applicable)
-    user_id = Column(String(100))
-    user_name = Column(String(255))
-    ip_address = Column(String(45))
-    user_agent = Column(String(500))
-    
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Indexes
-    __table_args__ = (
-        Index('ix_audit_company_date', 'company_id', 'created_at'),
-        Index('ix_audit_table_record', 'table_name', 'record_id'),
-    )
-
 
 # Database connection and management
 class DatabaseManager:
