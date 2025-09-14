@@ -1,4 +1,4 @@
-# fbr_core/models.py - Updated Company-Specific Version
+# fbr_core/models.py - Fixed Company-Specific Version with Proper Relationships
 from sqlalchemy import (
     Column,
     Integer,
@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timedelta
 
 Base = declarative_base()
 
@@ -23,17 +23,22 @@ class Company(Base):
 
     ntn_cnic = Column(String(100), primary_key=True)  # NTN/CNIC as primary key
     name = Column(String(255), nullable=False)
-    address = Column(Text , nullable=False)
+    address = Column(Text, nullable=False)
     province = Column(String(100), nullable=False)
-    province = Column(String(100))
+    city = Column(String(100))
+    phone = Column(String(50))
+    email = Column(String(255))
+    contact_person = Column(String(255))
+    business_type = Column(String(100))
+    registration_date = Column(DateTime)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    # invoices = relationship("Invoices", back_populates="company")
-    # items = relationship("Item", back_populates="company")
-    # buyers = relationship("Buyer", back_populates="company")
+    # Relationships - Fixed with proper back_populates
+    invoices = relationship("Invoices", back_populates="company")
+    items = relationship("Item", back_populates="company")
+    buyers = relationship("Buyer", back_populates="company")
     fbr_settings = relationship("FBRSettings", back_populates="company")
     fbr_queue = relationship("FBRQueue", back_populates="company")
     fbr_logs = relationship("FBRLogs", back_populates="company")
@@ -48,6 +53,9 @@ class Buyer(Base):
     name = Column(String(255), nullable=False)
     address = Column(Text)
     province = Column(String(100))
+    city = Column(String(100))
+    phone = Column(String(50))
+    email = Column(String(255))
     buyer_type = Column(String(50), default="Registered")  # Registered/Unregistered
     
     # Company relationship
@@ -56,6 +64,10 @@ class Buyer(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company", back_populates="buyers")
+    invoices = relationship("Invoices", back_populates="buyer")
 
     # Indexes
     __table_args__ = (
@@ -71,7 +83,10 @@ class Item(Base):
     name = Column(String(255), nullable=False)
     hs_code = Column(String(50), nullable=False)
     uom = Column(String(50), nullable=False)  # Unit of Measurement
-    description = Column(Text)
+    description = Column(Text, nullable=False)
+    category = Column(String(100))
+    standard_rate = Column(Float)
+    tax_rate = Column(Float)
         
     # Company relationship
     company_id = Column(String(100), ForeignKey('companies.ntn_cnic'), nullable=False)
@@ -79,6 +94,10 @@ class Item(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company", back_populates="items")
+    invoice_items = relationship("SalesInvoiceItem", back_populates="item")
 
     # Indexes
     __table_args__ = (
@@ -102,6 +121,13 @@ class Invoices(Base):
     invoice_type = Column(String(50), default="Sale Invoice")
     posting_date = Column(DateTime, nullable=False)
     due_date = Column(DateTime)
+    
+    # Buyer details (denormalized for FBR submission)
+    buyer_ntn_cnic = Column(String(100))
+    buyer_name = Column(String(255))
+    buyer_address = Column(Text)
+    buyer_province = Column(String(100))
+    buyer_type = Column(String(50))
     
     # Transaction details
     transaction_type = Column(String(100))
@@ -129,6 +155,11 @@ class Invoices(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    company = relationship("Company", back_populates="invoices")
+    buyer = relationship("Buyer", back_populates="invoices")
+    invoice_items = relationship("SalesInvoiceItem", back_populates="invoice")
 
     # Indexes
     __table_args__ = (
@@ -174,6 +205,10 @@ class SalesInvoiceItem(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Relationships
+    invoice = relationship("Invoices", back_populates="invoice_items")
+    item = relationship("Item", back_populates="invoice_items")
+
     # Indexes
     __table_args__ = (
         Index('ix_invoice_items_invoice', 'invoice_id'),
@@ -211,6 +246,9 @@ class FBRQueue(Base):
     last_retry_at = Column(DateTime)
     completed_at = Column(DateTime)
     next_retry_at = Column(DateTime)  # For scheduled retries
+
+    # Relationships
+    company = relationship("Company", back_populates="fbr_queue")
 
     # Indexes
     __table_args__ = (
@@ -261,6 +299,8 @@ class FBRLogs(Base):
     
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Relationships
+    company = relationship("Company", back_populates="fbr_logs")
 
     # Indexes
     __table_args__ = (
@@ -283,6 +323,16 @@ class FBRSettings(Base):
     api_endpoint = Column(String(500))
     validation_endpoint = Column(String(500))
     pral_authorization_token = Column(String(500))
+    pral_login_id = Column(String(255))
+    pral_login_password = Column(String(255))
+
+    # Connection Settings
+    timeout_seconds = Column(Integer, default=30)
+    max_retries = Column(Integer, default=3)
+    
+    # Default Settings
+    default_mode = Column(String(20), default="sandbox")
+    sandbox_scenario_id = Column(String(50), default="SN001")
 
     # Validation Settings
     auto_validate_before_submit = Column(Boolean, default=True)
@@ -295,10 +345,44 @@ class FBRSettings(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
+    company = relationship("Company", back_populates="fbr_settings")
+
     # Indexes
     __table_args__ = (
         Index('ix_fbr_settings_company', 'company_id'),
     )
+
+
+# Audit Log for tracking changes
+class AuditLog(Base):
+    """Audit log for tracking changes"""
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(String(100), ForeignKey('companies.ntn_cnic'), nullable=False)
+    
+    # Change details
+    action = Column(String(50), nullable=False)  # CREATE, UPDATE, DELETE, SUBMIT
+    table_name = Column(String(100), nullable=False)
+    record_id = Column(String(100), nullable=False)
+    
+    # Change data
+    old_values = Column(Text)  # JSON
+    new_values = Column(Text)  # JSON
+    
+    # User and timestamp
+    user_id = Column(String(100))
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    ip_address = Column(String(50))
+    user_agent = Column(String(500))
+    
+    # Indexes
+    __table_args__ = (
+        Index('ix_audit_logs_company_table', 'company_id', 'table_name'),
+        Index('ix_audit_logs_timestamp', 'timestamp'),
+    )
+
 
 # Database connection and management
 class DatabaseManager:
@@ -314,7 +398,11 @@ class DatabaseManager:
             max_overflow=20,    # Additional connections beyond pool_size
             echo=False,  # Set to True for SQL debugging
         )
+        
+        # Create all tables
         Base.metadata.create_all(self.engine)
+        
+        # Create session
         Session = sessionmaker(bind=self.engine)
         self.session = Session()
 
@@ -374,9 +462,9 @@ class DatabaseManager:
                     company_id=company_id, 
                     fbr_status='Valid'
                 ).count(),
-                'failed_fbr': session.query(Invoices).filter_by(
-                    company_id=company_id, 
-                    fbr_status='Invalid'
+                'failed_fbr': session.query(Invoices).filter(
+                    Invoices.company_id == company_id,
+                    Invoices.fbr_status.in_(['Invalid', 'Error'])
                 ).count(),
                 'total_items': session.query(Item).filter_by(company_id=company_id).count(),
                 'total_buyers': session.query(Buyer).filter_by(company_id=company_id).count(),

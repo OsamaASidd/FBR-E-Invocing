@@ -1,5 +1,6 @@
-# gui/dialogs/company_selection_dialog.py
+# gui/dialogs/company_selection_dialog.py - Fixed Version
 import sys
+from datetime import datetime
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QGroupBox, QFormLayout, QLineEdit, QMessageBox,
@@ -9,8 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QPalette, QColor, QPixmap
 from pathlib import Path
 
-
-from fbr_core.models import Company
+from fbr_core.models import Company, FBRSettings
 
 
 class CompanySelectionDialog(QDialog):
@@ -22,7 +22,6 @@ class CompanySelectionDialog(QDialog):
         super().__init__(parent)
         self.db_manager = db_manager
         self.selected_company = None
-        
         
         self.setWindowTitle("Select Company - FBR E-Invoicing System")
         self.setModal(True)
@@ -45,7 +44,6 @@ class CompanySelectionDialog(QDialog):
                 background: #1b2028;
                 border: 1px solid #2c3b52;
                 border-radius: 10px;
-                /* more top padding so the title has space inside the box */
                 padding: 28px 12px 12px 12px;
                 font-weight: bold;
             }
@@ -90,7 +88,6 @@ class CompanySelectionDialog(QDialog):
             QPushButton[style="warning"]:hover { background-color: #e0a800; }
         """)
 
-        
         self.setup_ui()
         self.load_companies()
 
@@ -109,7 +106,6 @@ class CompanySelectionDialog(QDialog):
         layout.addWidget(header_label)
 
         # --- FBR logo under the welcome text ---
-
         logo_label = QLabel()
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -167,8 +163,11 @@ class CompanySelectionDialog(QDialog):
         
         self.ntn_label = QLabel("-")
         self.address_label = QLabel("-")
+        self.province_label = QLabel("-")
+        self.business_type_label = QLabel("-")
         
         details_layout.addRow("NTN/CNIC:", self.ntn_label)
+        details_layout.addRow("Province:", self.province_label)
         details_layout.addRow("Address:", self.address_label)
         
         self.details_group.setVisible(False)
@@ -229,6 +228,12 @@ class CompanySelectionDialog(QDialog):
                         'ntn_cnic': company.ntn_cnic,
                         'name': company.name,
                         'address': company.address or "No address specified",
+                        'province': company.province or "Not specified",
+                        'city': company.city or "Not specified",
+                        'business_type': company.business_type or "Not specified",
+                        'phone': company.phone,
+                        'email': company.email,
+                        'contact_person': company.contact_person,
                         'created_at': company.created_at
                     }
                     
@@ -247,6 +252,7 @@ class CompanySelectionDialog(QDialog):
             # Update details
             self.ntn_label.setText(company_data['ntn_cnic'])
             self.address_label.setText(company_data['address'])
+            self.province_label.setText(company_data['province'])
             
             self.details_group.setVisible(True)
             self.continue_btn.setEnabled(True)
@@ -279,9 +285,9 @@ class AddCompanyDialog(QDialog):
         
         self.setWindowTitle("Add New Company")
         self.setModal(True)
-        self.setFixedSize(400, 300)
+        self.setFixedSize(500, 700)
         
-        self.setStyleSheet(parent.styleSheet())  # Inherit parent style
+        self.setStyleSheet(parent.styleSheet() if parent else "")
         
         self.setup_ui()
 
@@ -298,17 +304,24 @@ class AddCompanyDialog(QDialog):
         form_layout.addRow("Company Name*:", self.name_edit)
         
         self.ntn_edit = QLineEdit()
-        self.ntn_edit.setPlaceholderText("Enter NTN/CNIC")
+        self.ntn_edit.setPlaceholderText("Enter 13-digit CNIC or 7-digit NTN")
+        self.ntn_edit.setMaxLength(13)
         form_layout.addRow("NTN/CNIC*:", self.ntn_edit)
         
         self.address_edit = QTextEdit()
-        self.address_edit.setPlaceholderText("Enter company address")
+        self.address_edit.setPlaceholderText("Enter complete company address")
         self.address_edit.setMaximumHeight(80)
-        form_layout.addRow("Address:", self.address_edit)
+        form_layout.addRow("Address*:", self.address_edit)
+        
+        self.province_combo = QComboBox()
+        self.province_combo.addItems([
+            "", "PUNJAB", "SINDH", "KHYBER PAKHTUNKHWA", "BALOCHISTAN",
+            "GILGIT BALTISTAN", "AZAD JAMMU AND KASHMIR", "CAPITAL TERRITORY"
+        ])
+        form_layout.addRow("Province*:", self.province_combo)
         
         layout.addWidget(form_group)
         
-        # Buttons
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | 
             QDialogButtonBox.StandardButton.Cancel
@@ -344,9 +357,9 @@ class AddCompanyDialog(QDialog):
             self.ntn_edit.setFocus()
             return
         
-        # Validate NTN format (should be 13 digits)
-        if not ntn.isdigit() or len(ntn) != 13:
-            QMessageBox.warning(self, "Validation Error", "NTN/CNIC must be exactly 13 digits!")
+        # Validate NTN format (should be 7 or 13 digits)
+        if not (ntn.isdigit() and len(ntn) in (7, 13)):
+            QMessageBox.warning(self, "Validation Error", "NTN/CNIC must be exactly 7 or 13 digits!")
             self.ntn_edit.setFocus()
             return
             
@@ -377,13 +390,13 @@ class AddCompanyDialog(QDialog):
                 name=name,
                 address=address,
                 province=province,
+                registration_date=datetime.utcnow(),
                 is_active=True
             )
             
             session.add(new_company)
             
             # Create default FBR settings for the company
-            from fbr_core.models import FBRSettings
             fbr_settings = FBRSettings(
                 company_id=ntn,
                 api_endpoint="https://gw.fbr.gov.pk/di_data/v1/di/postinvoicedata_sb",
@@ -410,15 +423,3 @@ class AddCompanyDialog(QDialog):
             session.rollback()
             QMessageBox.critical(self, "Database Error", 
                                f"Failed to save company: {str(e)}")
-    
-    def __init__(self, db_manager, parent=None):
-        super().__init__(parent)
-        self.db_manager = db_manager
-        
-        self.setWindowTitle("Add New Company")
-        self.setModal(True)
-        self.setFixedSize(500, 600)
-        
-        self.setStyleSheet(parent.styleSheet() if parent else "")
-        
-        self.setup_ui()

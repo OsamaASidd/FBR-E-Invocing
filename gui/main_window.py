@@ -540,7 +540,7 @@ class MainWindow(QMainWindow):
         
         actions = [
             ("📄 New Invoice", self.new_invoice, "success"),
-            ("📦 Manage Items", self.manage_items, None),
+            ("📦 Add/Edit Items", self.manage_items, None),
             ("👥 Manage Buyers", self.manage_buyers, None),
             ("⚡ Process Queue", self.process_fbr_queue, "warning"),
             ("📊 Export Data", self.export_data, None),
@@ -674,7 +674,7 @@ class MainWindow(QMainWindow):
         # Toolbar
         toolbar_layout = QHBoxLayout()
         
-        manage_items_btn = QPushButton("📦 Manage Items")
+        manage_items_btn = QPushButton("📦 Add/Edit Items")
         manage_items_btn.setProperty("style", "success")
         manage_items_btn.clicked.connect(self.manage_items)
         toolbar_layout.addWidget(manage_items_btn)

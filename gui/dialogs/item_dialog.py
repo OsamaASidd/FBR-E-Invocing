@@ -90,93 +90,8 @@ class ItemManagementDialog(QDialog):
         self.setModal(True)
         self.resize(1000, 700)
         
-        self.setStyleSheet("""
-            QDialog { 
-                background-color: #0f1115; 
-                color: #eaeef6;
-            }
-            QLabel { 
-                color: #eaeef6; 
-                font-size: 13px; 
-            }
-            QGroupBox {
-                background: #1b2028;
-                border: 1px solid #2c3b52;
-                border-radius: 10px;
-                padding: 28px 12px 12px 12px;
-                font-weight: bold;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                left: 12px;
-                top: 0px;
-                background: #2c3b52;
-                color: #eaeef6;
-                border-radius: 8px;
-                padding: 2px 10px;
-                font-weight: 600;
-            }
-            QComboBox, QLineEdit, QTextEdit {
-                background: #0f141c;
-                color: #eaeef6;
-                border: 1px solid #334561;
-                border-radius: 6px;
-                padding: 8px 12px;
-                min-height: 34px;
-            }
-            QComboBox:focus, QLineEdit:focus, QTextEdit:focus {
-                border: 1px solid #5aa2ff;
-                box-shadow: 0 0 0 2px rgba(90,162,255,0.18);
-            }
-            QLineEdit:read-only {
-                background: #2c3b52;
-                color: #cccccc;
-            }
-            QPushButton {
-                background-color: #5aa2ff; 
-                color: #0f1115; 
-                border: none;
-                padding: 10px 20px; 
-                border-radius: 6px; 
-                font-weight: 700;
-                font-size: 14px;
-            }
-            QPushButton:hover { background:#7bb6ff; }
-            QPushButton:pressed { background:#4b92ec; }
-            QPushButton:disabled { background:#333; color:#666; }
-            QPushButton[style="success"] { background-color: #28a745; }
-            QPushButton[style="success"]:hover { background-color: #218838; }
-            QPushButton[style="warning"] { background-color: #ffc107; color: #000; }
-            QPushButton[style="warning"]:hover { background-color: #e0a800; }
-            QPushButton[style="danger"] { background-color: #dc3545; }
-            QPushButton[style="danger"]:hover { background-color: #c82333; }
-            QTableWidget { 
-                background: #0f141c; 
-                color:#eaeef6; 
-                border: 1px solid #334561; 
-            }
-            QHeaderView::section {
-                background: #17202b; 
-                color: #cfe2ff; 
-                border: 1px solid #334561; 
-                padding: 6px; 
-                font-weight: 600;
-            }
-            QProgressBar {
-                border: 2px solid #334561;
-                border-radius: 5px;
-                text-align: center;
-                background: #0f141c;
-                color: #eaeef6;
-            }
-            QProgressBar::chunk {
-                background-color: #5aa2ff;
-                border-radius: 3px;
-            }
-        """)
+        self.setStyleSheet(""" QDialog { background-color: #0f1115; color: #eaeef6; } QLabel { color: #eaeef6; font-size: 13px; } QGroupBox { background: #1b2028; border: 1px solid #2c3b52; border-radius: 10px; padding: 28px 12px 12px 12px; font-weight: bold; } QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; top: 0px; background: #2c3b52; color: #eaeef6; border-radius: 8px; padding: 2px 10px; font-weight: 600; } QComboBox, QLineEdit, QTextEdit { background: #0f141c; color: #eaeef6; border: 1px solid #334561; border-radius: 6px; padding: 8px 12px; min-height: 34px; } QComboBox:focus, QLineEdit:focus, QTextEdit:focus { border: 1px solid #5aa2ff; box-shadow: 0 0 0 2px rgba(90,162,255,0.18); } QLineEdit:read-only { background: #2c3b52; color: #cccccc; } QPushButton { background-color: #5aa2ff; color: #0f1115; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 700; font-size: 14px; } QPushButton:hover { background:#7bb6ff; } QPushButton:pressed { background:#4b92ec; } QPushButton:disabled { background:#333; color:#666; } QPushButton[style="success"] { background-color: #28a745; } QPushButton[style="success"]:hover { background-color: #218838; } QPushButton[style="warning"] { background-color: #ffc107; color: #000; } QPushButton[style="warning"]:hover { background-color: #e0a800; } QPushButton[style="danger"] { background-color: #dc3545; } QPushButton[style="danger"]:hover { background-color: #c82333; } QTableWidget { background: #0f141c; color:#eaeef6; border: 1px solid #334561; } QHeaderView::section { background: #17202b; color: #cfe2ff; border: 1px solid #334561; padding: 6px; font-weight: 600; } QProgressBar { border: 2px solid #334561; border-radius: 5px; text-align: center; background: #0f141c; color: #eaeef6; } QProgressBar::chunk { background-color: #5aa2ff; border-radius: 3px; } """)
 
-        
         self.setup_ui()
         self.setup_signals()
         
@@ -193,7 +108,7 @@ class ItemManagementDialog(QDialog):
         # Title with loading indicator
         header_layout = QHBoxLayout()
         
-        title_label = QLabel("Item Management")
+        title_label = QLabel("Add/Edit Item")
         title_font = QFont()
         title_font.setPointSize(16)
         title_font.setBold(True)
@@ -235,44 +150,25 @@ class ItemManagementDialog(QDialog):
         form_group = QGroupBox("Add/Edit Item")
         form_layout = QGridLayout(form_group)
         
-        # Row 1: Name and HS Code
-        form_layout.addWidget(QLabel("Item Name*:"), 0, 0)
-        self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("Enter item name")
-        form_layout.addWidget(self.name_edit, 0, 1)
-        
-        form_layout.addWidget(QLabel("HS Code*:"), 0, 2)
+        # Row 1: HS Code (left) then Item Name (right)
+        form_layout.addWidget(QLabel("HS Code*:"), 0, 0)
         self.hs_code_combo = QComboBox()
         self.hs_code_combo.setEditable(True)
         self.hs_code_combo.setPlaceholderText("Loading HS codes...")
         self.hs_code_combo.setEnabled(False)
-        form_layout.addWidget(self.hs_code_combo, 0, 3)
-        
+        form_layout.addWidget(self.hs_code_combo, 0, 1)
+
+        form_layout.addWidget(QLabel("Item Name*:"), 0, 2)
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("Enter item name")
+        form_layout.addWidget(self.name_edit, 0, 3)
+
         # Row 2: UoM (read-only, auto-populated) and Category
         form_layout.addWidget(QLabel("Unit of Measurement*:"), 1, 0)
         self.uom_edit = QLineEdit()
         self.uom_edit.setPlaceholderText("Auto-populated from HS code")
         self.uom_edit.setReadOnly(True)
         form_layout.addWidget(self.uom_edit, 1, 1)
-        
-        form_layout.addWidget(QLabel("Category:"), 1, 2)
-        self.category_combo = QComboBox()
-        self.category_combo.addItems([
-            "General", "Products", "Services", "Materials", 
-            "Equipment", "Software", "Consumables"
-        ])
-        form_layout.addWidget(self.category_combo, 1, 3)
-        
-        # Row 3: Pricing information
-        form_layout.addWidget(QLabel("Standard Rate (PKR):"), 2, 0)
-        self.standard_rate_edit = QLineEdit()
-        self.standard_rate_edit.setPlaceholderText("0.00")
-        form_layout.addWidget(self.standard_rate_edit, 2, 1)
-        
-        form_layout.addWidget(QLabel("Tax Rate (%):"), 2, 2)
-        self.tax_rate_edit = QLineEdit()
-        self.tax_rate_edit.setPlaceholderText("18.0")
-        form_layout.addWidget(self.tax_rate_edit, 2, 3)
         
         # Row 4: Description
         form_layout.addWidget(QLabel("Description:"), 3, 0)
@@ -289,6 +185,7 @@ class ItemManagementDialog(QDialog):
         
         # Buttons
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
         
         self.save_item_btn = QPushButton("💾 Save Item")
         self.save_item_btn.setProperty("style", "success")
@@ -308,6 +205,17 @@ class ItemManagementDialog(QDialog):
         form_layout.addLayout(button_layout, 5, 0, 1, 4)
         
         parent_layout.addWidget(form_group)
+
+        form_layout.setContentsMargins(20, 16, 20, 16)
+        form_layout.setHorizontalSpacing(14)
+        form_layout.setVerticalSpacing(12)
+        form_layout.setColumnStretch(0, 0) 
+        form_layout.setColumnStretch(1, 3)
+        form_layout.setColumnStretch(2, 0)
+        form_layout.setColumnStretch(3, 2)
+
+        self.hs_code_combo.setMinimumWidth(260)
+        self.description_edit.setMinimumHeight(96)
         
         # Store for edit mode
         self.editing_item_id = None
@@ -628,7 +536,7 @@ class ItemManagementDialog(QDialog):
         name = self.name_edit.text().strip()
         hs_code_text = self.hs_code_combo.currentText().strip()
         uom = self.uom_edit.text().strip()
-        category = self.category_combo.currentText().strip()
+        # category = self.category_combo.currentText().strip()
         description = self.description_edit.toPlainText().strip()
         
         if not name:
@@ -652,14 +560,6 @@ class ItemManagementDialog(QDialog):
             QMessageBox.warning(self, "Validation Error", "Invalid HS Code format!")
             return
         
-        # Validate numeric fields
-        try:
-            standard_rate = float(self.standard_rate_edit.text()) if self.standard_rate_edit.text().strip() else None
-            tax_rate = float(self.tax_rate_edit.text()) if self.tax_rate_edit.text().strip() else 18.0
-        except ValueError:
-            QMessageBox.warning(self, "Validation Error", "Please enter valid numeric values for rates!")
-            return
-        
         try:
             session = self.db_manager.get_session()
             
@@ -681,10 +581,10 @@ class ItemManagementDialog(QDialog):
             item.name = name
             item.hs_code = hs_code
             item.uom = uom
-            item.category = category
+            # item.category = category
             item.description = description
-            item.standard_rate = standard_rate
-            item.tax_rate = tax_rate
+            # item.standard_rate = standard_rate
+            # item.tax_rate = tax_rate
             item.updated_at = datetime.now()
             
             if not self.editing_item_id:
@@ -710,10 +610,10 @@ class ItemManagementDialog(QDialog):
         self.hs_code_combo.clearEditText()
         self.uom_edit.clear()
         self.uom_edit.setPlaceholderText("Auto-populated from HS code")
-        self.category_combo.setCurrentIndex(0)
+        # self.category_combo.setCurrentIndex(0)
         self.description_edit.clear()
-        self.standard_rate_edit.clear()
-        self.tax_rate_edit.clear()
+        # self.standard_rate_edit.clear()
+        # self.tax_rate_edit.clear()
         
         self.editing_item_id = None
         self.edit_mode_label.setText("")
@@ -767,8 +667,8 @@ class ItemManagementDialog(QDialog):
                 self.category_combo.setCurrentIndex(category_index)
             
             self.description_edit.setText(item.description or "")
-            self.standard_rate_edit.setText(str(item.standard_rate) if item.standard_rate else "")
-            self.tax_rate_edit.setText(str(item.tax_rate) if item.tax_rate else "")
+            # self.standard_rate_edit.setText(str(item.standard_rate) if item.standard_rate else "")
+            # self.tax_rate_edit.setText(str(item.tax_rate) if item.tax_rate else "")
             
             # Set edit mode
             self.editing_item_id = item_id
